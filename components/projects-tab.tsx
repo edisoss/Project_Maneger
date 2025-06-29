@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Badge } from "@/components/ui/badge"
+import { Progress } from "@/components/ui/progress"
 import {
   Dialog,
   DialogContent,
@@ -15,481 +17,379 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Badge } from "@/components/ui/badge"
-import { Plus, Calendar, MapPin, User, Eye, Edit } from "lucide-react"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Plus, Edit, Eye, Calendar, DollarSign, Users, TrendingUp } from "lucide-react"
+import { addProject } from "@/lib/database"
+import type { Project } from "@/lib/database"
 
-export default function ProjectsTab() {
-  const [projects, setProjects] = useState([
-    {
-      id: 1,
-      name: "Office Building Security System",
-      description: "Complete security camera installation and access control system for 15-story office building",
-      status: "In Progress",
-      progress: 75,
-      startDate: "2024-01-15",
-      endDate: "2024-02-28",
-      location: "Downtown Business District",
-      manager: "John Smith",
-      budget: 125000,
-      spent: 93750,
-    },
-    {
-      id: 2,
-      name: "Hospital BMS Installation",
-      description: "Building Management System installation for new hospital wing including HVAC controls",
-      status: "Planning",
-      progress: 25,
-      startDate: "2024-02-01",
-      endDate: "2024-04-15",
-      location: "City General Hospital",
-      manager: "Maria Garcia",
-      budget: 200000,
-      spent: 50000,
-    },
-    {
-      id: 3,
-      name: "School Network Cabling",
-      description: "Complete network infrastructure upgrade for elementary school",
-      status: "Completed",
-      progress: 100,
-      startDate: "2023-12-01",
-      endDate: "2024-01-15",
-      location: "Riverside Elementary",
-      manager: "David Johnson",
-      budget: 75000,
-      spent: 72500,
-    },
-  ])
+interface ProjectsTabProps {
+  projects: Project[]
+  setProjects: (projects: Project[]) => void
+}
 
-  const [isAddingProject, setIsAddingProject] = useState(false)
-  const [isViewingProject, setIsViewingProject] = useState(false)
-  const [isEditingProject, setIsEditingProject] = useState(false)
-  const [selectedProject, setSelectedProject] = useState<(typeof projects)[0] | null>(null)
-  const [newProject, setNewProject] = useState({
+export default function ProjectsTab({ projects, setProjects }: ProjectsTabProps) {
+  const [showAddDialog, setShowAddDialog] = useState(false)
+  const [showViewDialog, setShowViewDialog] = useState(false)
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  const [formData, setFormData] = useState({
     name: "",
     description: "",
-    status: "Planning",
-    startDate: "",
-    endDate: "",
-    location: "",
-    manager: "",
-    budget: "",
+    status: "",
+    start_date: "",
+    end_date: "",
+    budget: 0,
+    progress: 0,
   })
 
-  const handleAddProject = () => {
-    const project = {
-      id: projects.length + 1,
-      ...newProject,
-      progress: 0,
-      budget: Number.parseFloat(newProject.budget),
-      spent: 0,
-    }
-    setProjects([...projects, project])
-    setNewProject({
+  const statusOptions = ["Planning", "In Progress", "On Hold", "Completed", "Cancelled"]
+
+  const resetForm = () => {
+    setFormData({
       name: "",
       description: "",
-      status: "Planning",
-      startDate: "",
-      endDate: "",
-      location: "",
-      manager: "",
-      budget: "",
+      status: "",
+      start_date: "",
+      end_date: "",
+      budget: 0,
+      progress: 0,
     })
-    setIsAddingProject(false)
   }
 
-  const handleViewProject = (project: (typeof projects)[0]) => {
-    setSelectedProject(project)
-    setIsViewingProject(true)
-  }
+  const handleSubmit = async () => {
+    try {
+      setSaving(true)
 
-  const handleEditProject = (project: (typeof projects)[0]) => {
-    setSelectedProject(project)
-    setIsEditingProject(true)
-  }
+      if (!formData.name || !formData.description || !formData.status || !formData.start_date) {
+        alert("Please fill in all required fields")
+        return
+      }
 
-  const handleSaveEdit = () => {
-    if (!selectedProject) return
+      const newProject = await addProject(formData)
+      if (!newProject) {
+        alert("Failed to add project. Please try again.")
+        return
+      }
 
-    const updatedProjects = projects.map((project) => (project.id === selectedProject.id ? selectedProject : project))
-    setProjects(updatedProjects)
-    setIsEditingProject(false)
-    setSelectedProject(null)
-  }
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "Completed":
-        return "default"
-      case "In Progress":
-        return "secondary"
-      case "Planning":
-        return "outline"
-      default:
-        return "outline"
+      setProjects([...projects, newProject])
+      setShowAddDialog(false)
+      resetForm()
+    } catch (error) {
+      console.error("Error adding project:", error)
+      alert("Error adding project. Please try again.")
+    } finally {
+      setSaving(false)
     }
   }
+
+  const handleView = (project: Project) => {
+    setSelectedProject(project)
+    setShowViewDialog(true)
+  }
+
+  // Calculate statistics
+  const totalProjects = projects.length
+  const activeProjects = projects.filter((p) => p.status === "In Progress").length
+  const completedProjects = projects.filter((p) => p.status === "Completed").length
+  const totalBudget = projects.reduce((sum, p) => sum + p.budget, 0)
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold">Projects</h2>
-          <p className="text-gray-600">Manage your construction projects and track progress</p>
+          <h2 className="text-2xl font-bold">Project Management</h2>
+          <p className="text-gray-600">Manage construction projects and track progress</p>
         </div>
-        <Dialog open={isAddingProject} onOpenChange={setIsAddingProject}>
+        <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
           <DialogTrigger asChild>
-            <Button>
+            <Button onClick={() => setShowAddDialog(true)}>
               <Plus className="h-4 w-4 mr-2" />
               Add Project
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>Add New Project</DialogTitle>
-              <DialogDescription>
-                Create a new construction project to track progress and manage resources.
-              </DialogDescription>
+              <DialogDescription>Create a new construction project</DialogDescription>
             </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="project-name">Project Name</Label>
-                  <Input
-                    id="project-name"
-                    value={newProject.name}
-                    onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
-                    placeholder="Enter project name"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="project-status">Status</Label>
-                  <Select
-                    value={newProject.status}
-                    onValueChange={(value) => setNewProject({ ...newProject, status: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Planning">Planning</SelectItem>
-                      <SelectItem value="In Progress">In Progress</SelectItem>
-                      <SelectItem value="Completed">Completed</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="name">Project Name *</Label>
+                <Input
+                  id="name"
+                  placeholder="Enter project name"
+                  value={formData.name}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+                />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="project-description">Description</Label>
+
+              <div>
+                <Label htmlFor="description">Description *</Label>
                 <Textarea
-                  id="project-description"
-                  value={newProject.description}
-                  onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
-                  placeholder="Describe the project scope and objectives"
+                  id="description"
+                  placeholder="Enter project description"
+                  value={formData.description}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
                   rows={3}
                 />
               </div>
+
+              <div>
+                <Label htmlFor="status">Status *</Label>
+                <Select
+                  value={formData.status}
+                  onValueChange={(value) => setFormData((prev) => ({ ...prev, status: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {statusOptions.map((status) => (
+                      <SelectItem key={status} value={status}>
+                        {status}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="project-start">Start Date</Label>
+                <div>
+                  <Label htmlFor="start_date">Start Date *</Label>
                   <Input
-                    id="project-start"
+                    id="start_date"
                     type="date"
-                    value={newProject.startDate}
-                    onChange={(e) => setNewProject({ ...newProject, startDate: e.target.value })}
+                    value={formData.start_date}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, start_date: e.target.value }))}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="project-end">End Date</Label>
+                <div>
+                  <Label htmlFor="end_date">End Date</Label>
                   <Input
-                    id="project-end"
+                    id="end_date"
                     type="date"
-                    value={newProject.endDate}
-                    onChange={(e) => setNewProject({ ...newProject, endDate: e.target.value })}
+                    value={formData.end_date}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, end_date: e.target.value }))}
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="project-location">Location</Label>
-                  <Input
-                    id="project-location"
-                    value={newProject.location}
-                    onChange={(e) => setNewProject({ ...newProject, location: e.target.value })}
-                    placeholder="Project location"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="project-manager">Project Manager</Label>
-                  <Input
-                    id="project-manager"
-                    value={newProject.manager}
-                    onChange={(e) => setNewProject({ ...newProject, manager: e.target.value })}
-                    placeholder="Manager name"
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="project-budget">Budget ($)</Label>
+
+              <div>
+                <Label htmlFor="budget">Budget ($)</Label>
                 <Input
-                  id="project-budget"
+                  id="budget"
                   type="number"
-                  value={newProject.budget}
-                  onChange={(e) => setNewProject({ ...newProject, budget: e.target.value })}
-                  placeholder="Project budget"
+                  min="0"
+                  step="1000"
+                  value={formData.budget}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, budget: Number.parseInt(e.target.value) || 0 }))}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="progress">Progress (%)</Label>
+                <Input
+                  id="progress"
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={formData.progress}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, progress: Number.parseInt(e.target.value) || 0 }))}
                 />
               </div>
             </div>
-            <div className="flex justify-end space-x-2">
-              <Button variant="outline" onClick={() => setIsAddingProject(false)}>
+
+            <div className="flex justify-end space-x-2 pt-4">
+              <Button variant="outline" onClick={() => setShowAddDialog(false)} disabled={saving}>
                 Cancel
               </Button>
-              <Button onClick={handleAddProject}>Add Project</Button>
+              <Button onClick={handleSubmit} disabled={saving}>
+                {saving ? "Adding..." : "Add Project"}
+              </Button>
             </div>
           </DialogContent>
         </Dialog>
+      </div>
 
-        {/* View Project Dialog */}
-        <Dialog open={isViewingProject} onOpenChange={setIsViewingProject}>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>{selectedProject?.name}</DialogTitle>
-              <DialogDescription>Project details and progress information</DialogDescription>
-            </DialogHeader>
-            {selectedProject && (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-sm font-medium text-gray-700">Status</Label>
-                    <div className="mt-1">
-                      <Badge variant={getStatusColor(selectedProject.status)}>{selectedProject.status}</Badge>
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium text-gray-700">Progress</Label>
-                    <div className="mt-1 flex items-center">
-                      <div className="w-full bg-gray-200 rounded-full h-2 mr-2">
-                        <div
-                          className="bg-blue-600 h-2 rounded-full"
-                          style={{ width: `${selectedProject.progress}%` }}
-                        ></div>
+      {/* Statistics Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Projects</CardTitle>
+            <Calendar className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{totalProjects}</div>
+            <p className="text-xs text-muted-foreground">All projects</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active Projects</CardTitle>
+            <TrendingUp className="h-4 w-4 text-blue-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-blue-600">{activeProjects}</div>
+            <p className="text-xs text-muted-foreground">Currently in progress</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Completed</CardTitle>
+            <Users className="h-4 w-4 text-green-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">{completedProjects}</div>
+            <p className="text-xs text-muted-foreground">Successfully finished</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Budget</CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">${totalBudget.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground">Combined project value</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Projects Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Projects Overview</CardTitle>
+          <CardDescription>All construction projects and their current status</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Project Name</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Progress</TableHead>
+                <TableHead>Start Date</TableHead>
+                <TableHead>Budget</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {projects.map((project) => (
+                <TableRow key={project.id}>
+                  <TableCell>
+                    <div className="font-medium">{project.name}</div>
+                    <div className="text-sm text-gray-500 truncate max-w-xs">{project.description}</div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      variant={
+                        project.status === "Completed"
+                          ? "default"
+                          : project.status === "In Progress"
+                            ? "secondary"
+                            : project.status === "On Hold"
+                              ? "destructive"
+                              : "outline"
+                      }
+                    >
+                      {project.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="w-full">
+                      <div className="flex items-center justify-between text-sm mb-1">
+                        <span>{project.progress}%</span>
                       </div>
-                      <span className="text-sm text-gray-600">{selectedProject.progress}%</span>
+                      <Progress value={project.progress} className="h-2" />
                     </div>
-                  </div>
+                  </TableCell>
+                  <TableCell>{project.start_date}</TableCell>
+                  <TableCell>${project.budget.toLocaleString()}</TableCell>
+                  <TableCell>
+                    <div className="flex space-x-2">
+                      <Button variant="outline" size="sm" onClick={() => handleView(project)}>
+                        <Eye className="h-3 w-3" />
+                      </Button>
+                      <Button variant="outline" size="sm">
+                        <Edit className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          {projects.length === 0 && (
+            <div className="text-center py-8">
+              <p className="text-gray-500">No projects found. Add your first project to get started!</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* View Dialog */}
+      <Dialog open={showViewDialog} onOpenChange={setShowViewDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Project Details</DialogTitle>
+            <DialogDescription>Complete information about this project</DialogDescription>
+          </DialogHeader>
+
+          {selectedProject && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="font-medium">Project Name</Label>
+                  <p>{selectedProject.name}</p>
                 </div>
                 <div>
-                  <Label className="text-sm font-medium text-gray-700">Description</Label>
-                  <p className="mt-1 text-sm text-gray-600">{selectedProject.description}</p>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-sm font-medium text-gray-700">Start Date</Label>
-                    <p className="mt-1 text-sm text-gray-600">{selectedProject.startDate}</p>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium text-gray-700">End Date</Label>
-                    <p className="mt-1 text-sm text-gray-600">{selectedProject.endDate}</p>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-sm font-medium text-gray-700">Location</Label>
-                    <p className="mt-1 text-sm text-gray-600">{selectedProject.location}</p>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium text-gray-700">Project Manager</Label>
-                    <p className="mt-1 text-sm text-gray-600">{selectedProject.manager}</p>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-sm font-medium text-gray-700">Budget</Label>
-                    <p className="mt-1 text-sm text-gray-600">${selectedProject.budget.toLocaleString()}</p>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium text-gray-700">Spent</Label>
-                    <p className="mt-1 text-sm text-gray-600">${selectedProject.spent.toLocaleString()}</p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </DialogContent>
-        </Dialog>
-
-        {/* Edit Project Dialog */}
-        <Dialog open={isEditingProject} onOpenChange={setIsEditingProject}>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Edit Project</DialogTitle>
-              <DialogDescription>Update project details and information</DialogDescription>
-            </DialogHeader>
-            {selectedProject && (
-              <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-project-name">Project Name</Label>
-                    <Input
-                      id="edit-project-name"
-                      value={selectedProject.name}
-                      onChange={(e) => setSelectedProject({ ...selectedProject, name: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-project-status">Status</Label>
-                    <Select
-                      value={selectedProject.status}
-                      onValueChange={(value) => setSelectedProject({ ...selectedProject, status: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Planning">Planning</SelectItem>
-                        <SelectItem value="In Progress">In Progress</SelectItem>
-                        <SelectItem value="Completed">Completed</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="edit-project-description">Description</Label>
-                  <Textarea
-                    id="edit-project-description"
-                    value={selectedProject.description}
-                    onChange={(e) => setSelectedProject({ ...selectedProject, description: e.target.value })}
-                    rows={3}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-project-start">Start Date</Label>
-                    <Input
-                      id="edit-project-start"
-                      type="date"
-                      value={selectedProject.startDate}
-                      onChange={(e) => setSelectedProject({ ...selectedProject, startDate: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-project-end">End Date</Label>
-                    <Input
-                      id="edit-project-end"
-                      type="date"
-                      value={selectedProject.endDate}
-                      onChange={(e) => setSelectedProject({ ...selectedProject, endDate: e.target.value })}
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-project-location">Location</Label>
-                    <Input
-                      id="edit-project-location"
-                      value={selectedProject.location}
-                      onChange={(e) => setSelectedProject({ ...selectedProject, location: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-project-manager">Project Manager</Label>
-                    <Input
-                      id="edit-project-manager"
-                      value={selectedProject.manager}
-                      onChange={(e) => setSelectedProject({ ...selectedProject, manager: e.target.value })}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="edit-project-budget">Budget ($)</Label>
-                  <Input
-                    id="edit-project-budget"
-                    type="number"
-                    value={selectedProject.budget}
-                    onChange={(e) =>
-                      setSelectedProject({ ...selectedProject, budget: Number.parseFloat(e.target.value) })
+                  <Label className="font-medium">Status</Label>
+                  <Badge
+                    variant={
+                      selectedProject.status === "Completed"
+                        ? "default"
+                        : selectedProject.status === "In Progress"
+                          ? "secondary"
+                          : "outline"
                     }
-                  />
+                  >
+                    {selectedProject.status}
+                  </Badge>
+                </div>
+                <div>
+                  <Label className="font-medium">Start Date</Label>
+                  <p>{selectedProject.start_date}</p>
+                </div>
+                <div>
+                  <Label className="font-medium">End Date</Label>
+                  <p>{selectedProject.end_date || "Not set"}</p>
+                </div>
+                <div>
+                  <Label className="font-medium">Budget</Label>
+                  <p>${selectedProject.budget.toLocaleString()}</p>
+                </div>
+                <div>
+                  <Label className="font-medium">Progress</Label>
+                  <div className="flex items-center space-x-2">
+                    <Progress value={selectedProject.progress} className="flex-1" />
+                    <span className="text-sm">{selectedProject.progress}%</span>
+                  </div>
                 </div>
               </div>
-            )}
-            <div className="flex justify-end space-x-2">
-              <Button variant="outline" onClick={() => setIsEditingProject(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleSaveEdit}>Save Changes</Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {projects.map((project) => (
-          <Card key={project.id} className="hover:shadow-lg transition-shadow">
-            <CardHeader>
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
-                  <CardTitle className="text-lg">{project.name}</CardTitle>
-                  <CardDescription className="mt-2 line-clamp-2">{project.description}</CardDescription>
-                </div>
-                <Badge variant={getStatusColor(project.status)}>{project.status}</Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
               <div>
-                <div className="flex justify-between text-sm text-gray-600 mb-1">
-                  <span>Progress</span>
-                  <span>{project.progress}%</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div
-                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                    style={{ width: `${project.progress}%` }}
-                  ></div>
-                </div>
+                <Label className="font-medium">Description</Label>
+                <p className="mt-1">{selectedProject.description}</p>
               </div>
-
-              <div className="space-y-2 text-sm text-gray-600">
-                <div className="flex items-center">
-                  <Calendar className="h-4 w-4 mr-2" />
-                  <span>
-                    {project.startDate} - {project.endDate}
-                  </span>
-                </div>
-                <div className="flex items-center">
-                  <MapPin className="h-4 w-4 mr-2" />
-                  <span>{project.location}</span>
-                </div>
-                <div className="flex items-center">
-                  <User className="h-4 w-4 mr-2" />
-                  <span>{project.manager}</span>
-                </div>
-              </div>
-
-              <div className="pt-2 border-t">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Budget:</span>
-                  <span className="font-medium">${project.budget.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Spent:</span>
-                  <span className="font-medium">${project.spent.toLocaleString()}</span>
-                </div>
-              </div>
-
-              <div className="flex justify-end space-x-2 pt-2">
-                <Button variant="outline" size="sm" onClick={() => handleViewProject(project)}>
-                  <Eye className="h-4 w-4 mr-1" />
-                  View
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => handleEditProject(project)}>
-                  <Edit className="h-4 w-4 mr-1" />
-                  Edit
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

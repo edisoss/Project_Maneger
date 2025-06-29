@@ -1,7 +1,5 @@
 "use client"
 
-import type React from "react"
-
 import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -9,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
   DialogContent,
@@ -17,483 +16,312 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Badge } from "@/components/ui/badge"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Plus, Calendar, Clock, User, Package, Edit, Camera, X, Eye } from "lucide-react"
-
-// Mock data for workers (in real app, this would come from your database)
-const availableWorkers = [
-  { id: 1, name: "John Smith", specialty: "Security Systems" },
-  { id: 2, name: "Maria Garcia", specialty: "Network Cabling" },
-  { id: 3, name: "David Johnson", specialty: "BMS" },
-  { id: 4, name: "Sarah Wilson", specialty: "Security Systems" },
-  { id: 5, name: "Mike Brown", specialty: "General" },
-  { id: 6, name: "Lisa Chen", specialty: "Network Cabling" },
-]
+import { Plus, Eye, Edit, Trash2, Calendar, Clock, Users, Package } from "lucide-react"
+import { addDailyLog, updateDailyLog, deleteDailyLog, updateMaterial } from "@/lib/database"
+import type { Material, DailyLog, Worker } from "@/lib/database"
 
 interface DailyLogsTabProps {
-  materials: Array<{
-    id: number
-    name: string
-    category: string
-    currentStock: number
-    minStock: number
-    unit: string
-    location: string
-    lastUpdated: string
-    status: string
-  }>
-  setMaterials: React.Dispatch<
-    React.SetStateAction<
-      Array<{
-        id: number
-        name: string
-        category: string
-        currentStock: number
-        minStock: number
-        unit: string
-        location: string
-        lastUpdated: string
-        status: string
-      }>
-    >
-  >
+  materials: Material[]
+  setMaterials: (materials: Material[]) => void
+  dailyLogs: DailyLog[]
+  setDailyLogs: (logs: DailyLog[]) => void
+  workers: Worker[]
 }
 
-export default function DailyLogsTab({ materials, setMaterials }: DailyLogsTabProps) {
-  const [logs, setLogs] = useState([
-    {
-      id: 1,
-      date: "2024-01-20",
-      project: "Office Building Security System",
-      workers: [
-        { id: 1, name: "John Smith", hoursWorked: 8 },
-        { id: 4, name: "Sarah Wilson", hoursWorked: 7.5 },
-      ],
-      tasksCompleted: "Installed 12 CCTV cameras on floors 10-12, configured network connections",
-      materialsUsed: [
-        { id: 2, name: "Security Cameras (IP)", quantity: 12, unit: "pieces" },
-        { id: 1, name: "Cat6 Network Cable", quantity: 200, unit: "meters" },
-        { id: 4, name: "RJ45 Connectors", quantity: 24, unit: "pieces" },
-      ],
-      notes: "All cameras tested and working properly. Need additional mounting brackets for next phase.",
-      status: "Completed",
-      photos: [
-        { id: 1, url: "/placeholder.svg?height=200&width=300", caption: "Cameras installed on floor 10" },
-        { id: 2, url: "/placeholder.svg?height=200&width=300", caption: "Network configuration complete" },
-      ],
-    },
-    {
-      id: 2,
-      date: "2024-01-20",
-      project: "Hospital BMS Installation",
-      workers: [
-        { id: 2, name: "Maria Garcia", hoursWorked: 7.5 },
-        { id: 3, name: "David Johnson", hoursWorked: 8 },
-      ],
-      tasksCompleted: "Wired control panels for HVAC zones 1-3, tested communication protocols",
-      materialsUsed: [
-        { id: 3, name: "BMS Control Panels", quantity: 3, unit: "pieces" },
-        { id: 1, name: "Cat6 Network Cable", quantity: 150, unit: "meters" },
-        { id: 5, name: "Temperature Sensors", quantity: 6, unit: "pieces" },
-      ],
-      notes: "Zone 2 panel needs firmware update. Scheduled for tomorrow.",
-      status: "In Progress",
-      photos: [{ id: 3, url: "/placeholder.svg?height=200&width=300", caption: "Control panel installation" }],
-    },
-  ])
+export default function DailyLogsTab({ materials, setMaterials, dailyLogs, setDailyLogs, workers }: DailyLogsTabProps) {
+  const [showAddDialog, setShowAddDialog] = useState(false)
+  const [showViewDialog, setShowViewDialog] = useState(false)
+  const [showEditDialog, setShowEditDialog] = useState(false)
+  const [selectedLog, setSelectedLog] = useState<DailyLog | null>(null)
+  const [editingLog, setEditingLog] = useState<DailyLog | null>(null)
+  const [saving, setSaving] = useState(false)
 
-  const [isAddingLog, setIsAddingLog] = useState(false)
-  const [newLog, setNewLog] = useState({
+  // Form state
+  const [formData, setFormData] = useState({
     date: new Date().toISOString().split("T")[0],
     project: "",
-    workers: [] as Array<{ id: number; name: string; hoursWorked: number }>,
-    tasksCompleted: "",
-    materialsUsed: [] as Array<{ id: number; name: string; quantity: number; unit: string }>,
+    work_description: "",
+    hours_worked: 8,
     notes: "",
-    photos: [] as Array<{ id: number; url: string; caption: string }>,
+    weather: "",
   })
 
-  const [selectedWorkers, setSelectedWorkers] = useState<number[]>([])
-  const [workerHours, setWorkerHours] = useState<Record<number, number>>({})
-  const [selectedMaterials, setSelectedMaterials] = useState<number[]>([])
-  const [materialQuantities, setMaterialQuantities] = useState<Record<number, number>>({})
-  const [uploadedPhotos, setUploadedPhotos] = useState<Array<{ file: File; preview: string; caption: string }>>([])
-  const [isUploading, setIsUploading] = useState(false)
+  const [selectedWorkers, setSelectedWorkers] = useState<string[]>([])
+  const [selectedMaterials, setSelectedMaterials] = useState<
+    Array<{
+      material_id: number
+      material_name: string
+      quantity: number
+      unit: string
+    }>
+  >([])
 
-  const [isEditingLog, setIsEditingLog] = useState(false)
-  const [editingLog, setEditingLog] = useState<(typeof logs)[0] | null>(null)
-  const [editSelectedWorkers, setEditSelectedWorkers] = useState<number[]>([])
-  const [editWorkerHours, setEditWorkerHours] = useState<Record<number, number>>({})
-  const [editSelectedMaterials, setEditSelectedMaterials] = useState<number[]>([])
-  const [editMaterialQuantities, setEditMaterialQuantities] = useState<Record<number, number>>({})
-  const [editUploadedPhotos, setEditUploadedPhotos] = useState<Array<{ file: File; preview: string; caption: string }>>(
-    [],
-  )
+  const projects = [
+    "Office Building Security System",
+    "Hospital BMS Installation",
+    "School Network Cabling",
+    "Warehouse HVAC System",
+    "Hotel Fire Safety System",
+  ]
 
-  const [viewingPhotos, setViewingPhotos] = useState<Array<{ id: number; url: string; caption: string }>>([])
-  const [isViewingPhotos, setIsViewingPhotos] = useState(false)
+  const weatherOptions = ["Clear", "Partly Cloudy", "Cloudy", "Light Rain", "Heavy Rain", "Snow"]
 
-  const projects = ["Office Building Security System", "Hospital BMS Installation", "School Network Cabling"]
-
-  const updateMaterialStock = (materialId: number, quantityChange: number) => {
-    setMaterials((prev) =>
-      prev.map((material) => {
-        if (material.id === materialId) {
-          const newStock = Math.max(0, material.currentStock + quantityChange)
-          const newStatus =
-            newStock <= 0
-              ? "Out of Stock"
-              : newStock <= material.minStock * 0.5
-                ? "Critical"
-                : newStock <= material.minStock
-                  ? "Low Stock"
-                  : "In Stock"
-
-          return {
-            ...material,
-            currentStock: newStock,
-            status: newStatus,
-            lastUpdated: new Date().toISOString().split("T")[0],
-          }
-        }
-        return material
-      }),
+  const handleWorkerToggle = (workerName: string) => {
+    setSelectedWorkers((prev) =>
+      prev.includes(workerName) ? prev.filter((w) => w !== workerName) : [...prev, workerName],
     )
   }
 
-  const handlePhotoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files
-    if (!files) return
+  const handleMaterialAdd = (materialId: number) => {
+    const material = materials.find((m) => m.id === materialId)
+    if (!material) return
 
-    const newPhotos = Array.from(files).map((file) => ({
-      file,
-      preview: URL.createObjectURL(file),
-      caption: "",
-    }))
+    const existing = selectedMaterials.find((m) => m.material_id === materialId)
+    if (existing) return
 
-    setUploadedPhotos([...uploadedPhotos, ...newPhotos])
+    setSelectedMaterials((prev) => [
+      ...prev,
+      {
+        material_id: material.id,
+        material_name: material.name,
+        quantity: 1,
+        unit: material.unit,
+      },
+    ])
   }
 
-  const handleEditPhotoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files
-    if (!files) return
-
-    const newPhotos = Array.from(files).map((file) => ({
-      file,
-      preview: URL.createObjectURL(file),
-      caption: "",
-    }))
-
-    setEditUploadedPhotos([...editUploadedPhotos, ...newPhotos])
+  const handleMaterialQuantityChange = (materialId: number, quantity: number) => {
+    setSelectedMaterials((prev) =>
+      prev.map((m) => (m.material_id === materialId ? { ...m, quantity: Math.max(0, quantity) } : m)),
+    )
   }
 
-  const removePhoto = (index: number) => {
-    const newPhotos = [...uploadedPhotos]
-    URL.revokeObjectURL(newPhotos[index].preview)
-    newPhotos.splice(index, 1)
-    setUploadedPhotos(newPhotos)
+  const handleMaterialRemove = (materialId: number) => {
+    setSelectedMaterials((prev) => prev.filter((m) => m.material_id !== materialId))
   }
 
-  const removeEditPhoto = (index: number) => {
-    const newPhotos = [...editUploadedPhotos]
-    URL.revokeObjectURL(newPhotos[index].preview)
-    newPhotos.splice(index, 1)
-    setEditUploadedPhotos(newPhotos)
+  const resetForm = () => {
+    setFormData({
+      date: new Date().toISOString().split("T")[0],
+      project: "",
+      work_description: "",
+      hours_worked: 8,
+      notes: "",
+      weather: "",
+    })
+    setSelectedWorkers([])
+    setSelectedMaterials([])
   }
 
-  const updatePhotoCaption = (index: number, caption: string) => {
-    const newPhotos = [...uploadedPhotos]
-    newPhotos[index].caption = caption
-    setUploadedPhotos(newPhotos)
-  }
-
-  const updateEditPhotoCaption = (index: number, caption: string) => {
-    const newPhotos = [...editUploadedPhotos]
-    newPhotos[index].caption = caption
-    setEditUploadedPhotos(newPhotos)
-  }
-
-  const uploadPhotosToBlob = async (photos: Array<{ file: File; caption: string }>) => {
-    const uploadedPhotos = []
-
-    for (const photo of photos) {
-      try {
-        // In preview mode, use placeholder URLs instead of actual upload
-        if (typeof window !== "undefined" && window.location.hostname.includes("vusercontent.net")) {
-          uploadedPhotos.push({
-            id: Date.now() + Math.random(),
-            url: `/placeholder.svg?height=200&width=300&text=${encodeURIComponent(photo.file.name)}`,
-            caption: photo.caption,
-          })
-          continue
-        }
-
-        const formData = new FormData()
-        formData.append("file", photo.file)
-
-        const response = await fetch("/api/upload", {
-          method: "POST",
-          body: formData,
-        })
-
-        if (response.ok) {
-          const { url } = await response.json()
-          uploadedPhotos.push({
-            id: Date.now() + Math.random(),
-            url,
-            caption: photo.caption,
-          })
-        } else {
-          // Fallback to placeholder if upload fails
-          uploadedPhotos.push({
-            id: Date.now() + Math.random(),
-            url: `/placeholder.svg?height=200&width=300&text=${encodeURIComponent(photo.file.name)}`,
-            caption: photo.caption,
-          })
-        }
-      } catch (error) {
-        console.error("Failed to upload photo:", error)
-        // Fallback to placeholder on error
-        uploadedPhotos.push({
-          id: Date.now() + Math.random(),
-          url: `/placeholder.svg?height=200&width=300&text=${encodeURIComponent(photo.file.name)}`,
-          caption: photo.caption,
-        })
-      }
-    }
-
-    return uploadedPhotos
-  }
-
-  const handleWorkerSelection = (workerId: number, checked: boolean) => {
-    if (checked) {
-      setSelectedWorkers([...selectedWorkers, workerId])
-      setWorkerHours({ ...workerHours, [workerId]: 8 }) // Default 8 hours
-    } else {
-      setSelectedWorkers(selectedWorkers.filter((id) => id !== workerId))
-      const newHours = { ...workerHours }
-      delete newHours[workerId]
-      setWorkerHours(newHours)
-    }
-  }
-
-  const handleMaterialSelection = (materialId: number, checked: boolean) => {
-    if (checked) {
-      setSelectedMaterials([...selectedMaterials, materialId])
-      setMaterialQuantities({ ...materialQuantities, [materialId]: 1 }) // Default 1 unit
-    } else {
-      setSelectedMaterials(selectedMaterials.filter((id) => id !== materialId))
-      const newQuantities = { ...materialQuantities }
-      delete newQuantities[materialId]
-      setMaterialQuantities(newQuantities)
-    }
-  }
-
-  const handleAddLog = async () => {
+  const handleSubmit = async () => {
     try {
-      setIsUploading(true)
+      setSaving(true)
 
       // Validate required fields
-      if (!newLog.project || selectedWorkers.length === 0 || !newLog.tasksCompleted) {
-        alert("Please fill in all required fields: project, workers, and tasks completed.")
-        setIsUploading(false)
+      if (!formData.project || !formData.work_description || selectedWorkers.length === 0) {
+        alert("Please fill in all required fields")
         return
       }
 
-      const workersData = selectedWorkers.map((workerId) => {
-        const worker = availableWorkers.find((w) => w.id === workerId)!
-        return {
-          id: workerId,
-          name: worker.name,
-          hoursWorked: workerHours[workerId] || 0,
-        }
-      })
-
-      const materialsData = selectedMaterials.map((materialId) => {
-        const material = materials.find((m) => m.id === materialId)!
-        return {
-          id: materialId,
-          name: material.name,
-          quantity: materialQuantities[materialId] || 0,
-          unit: material.unit,
-        }
-      })
-
-      // Upload photos to Vercel Blob (with fallback for preview mode)
-      const photosData = await uploadPhotosToBlob(uploadedPhotos)
-
-      // Update material stock by deducting used quantities
-      selectedMaterials.forEach((materialId) => {
-        const usedQuantity = materialQuantities[materialId] || 0
-        if (usedQuantity > 0) {
-          updateMaterialStock(materialId, -usedQuantity)
-        }
-      })
-
-      const log = {
-        id: logs.length + 1,
-        date: newLog.date,
-        project: newLog.project,
-        workers: workersData,
-        tasksCompleted: newLog.tasksCompleted,
-        materialsUsed: materialsData,
-        notes: newLog.notes,
-        photos: photosData,
-        status: "Completed" as const,
+      const newLogData = {
+        date: formData.date,
+        project: formData.project,
+        work_description: formData.work_description,
+        workers_present: selectedWorkers,
+        hours_worked: formData.hours_worked,
+        materials_used: selectedMaterials,
+        notes: formData.notes,
+        weather: formData.weather,
+        status: "Completed",
+        created_by: "manager@company.com",
       }
 
-      setLogs([log, ...logs])
+      // Add the daily log to database
+      const newLog = await addDailyLog(newLogData)
+      if (!newLog) {
+        alert("Failed to save daily log. Please try again.")
+        return
+      }
 
-      // Reset form completely
-      setNewLog({
-        date: new Date().toISOString().split("T")[0],
-        project: "",
-        workers: [],
-        tasksCompleted: "",
-        materialsUsed: [],
-        notes: "",
-        photos: [],
-      })
-      setSelectedWorkers([])
-      setWorkerHours({})
-      setSelectedMaterials([])
-      setMaterialQuantities({})
+      // Update materials stock in database and local state
+      const materialUpdates = []
+      for (const usedMaterial of selectedMaterials) {
+        const material = materials.find((m) => m.id === usedMaterial.material_id)
+        if (material) {
+          const newStock = Math.max(0, material.current_stock - usedMaterial.quantity)
+          const updatedMaterial = await updateMaterial(material.id, {
+            current_stock: newStock,
+            status: newStock <= material.min_stock ? "Low Stock" : newStock === 0 ? "Out of Stock" : "In Stock",
+            last_updated: new Date().toISOString().split("T")[0],
+          })
+          if (updatedMaterial) {
+            materialUpdates.push(updatedMaterial)
+          }
+        }
+      }
 
-      // Clean up photo previews
-      uploadedPhotos.forEach((photo) => URL.revokeObjectURL(photo.preview))
-      setUploadedPhotos([])
+      // Update local state
+      setMaterials((prev) =>
+        prev.map((material) => {
+          const updated = materialUpdates.find((u) => u.id === material.id)
+          return updated || material
+        }),
+      )
 
-      setIsAddingLog(false)
+      setDailyLogs((prev) => [newLog, ...prev])
+      setShowAddDialog(false)
+      resetForm()
 
-      console.log("Log saved successfully:", log)
+      console.log("Daily log saved successfully:", newLog)
     } catch (error) {
-      console.error("Error adding log:", error)
-      alert("Failed to save log. Please try again.")
+      console.error("Error saving daily log:", error)
+      alert("Error saving daily log. Please try again.")
     } finally {
-      setIsUploading(false)
+      setSaving(false)
     }
   }
 
-  const handleEditLog = (log: (typeof logs)[0]) => {
+  const handleEdit = (log: DailyLog) => {
     setEditingLog(log)
-
-    // Set up workers
-    const workerIds = log.workers.map((w) => w.id)
-    const workerHoursMap = log.workers.reduce((acc, w) => ({ ...acc, [w.id]: w.hoursWorked }), {})
-    setEditSelectedWorkers(workerIds)
-    setEditWorkerHours(workerHoursMap)
-
-    // Set up materials
-    const materialIds = log.materialsUsed.map((m) => m.id)
-    const materialQuantitiesMap = log.materialsUsed.reduce((acc, m) => ({ ...acc, [m.id]: m.quantity }), {})
-    setEditSelectedMaterials(materialIds)
-    setEditMaterialQuantities(materialQuantitiesMap)
-
-    setIsEditingLog(true)
+    setFormData({
+      date: log.date,
+      project: log.project,
+      work_description: log.work_description,
+      hours_worked: log.hours_worked,
+      notes: log.notes,
+      weather: log.weather,
+    })
+    setSelectedWorkers(log.workers_present)
+    setSelectedMaterials(log.materials_used)
+    setShowEditDialog(true)
   }
 
-  const handleEditWorkerSelection = (workerId: number, checked: boolean) => {
-    if (checked) {
-      setEditSelectedWorkers([...editSelectedWorkers, workerId])
-      setEditWorkerHours({ ...editWorkerHours, [workerId]: 8 })
-    } else {
-      setEditSelectedWorkers(editSelectedWorkers.filter((id) => id !== workerId))
-      const newHours = { ...editWorkerHours }
-      delete newHours[workerId]
-      setEditWorkerHours(newHours)
-    }
-  }
-
-  const handleEditMaterialSelection = (materialId: number, checked: boolean) => {
-    if (checked) {
-      setEditSelectedMaterials([...editSelectedMaterials, materialId])
-      setEditMaterialQuantities({ ...editMaterialQuantities, [materialId]: 1 })
-    } else {
-      setEditSelectedMaterials(editSelectedMaterials.filter((id) => id !== materialId))
-      const newQuantities = { ...editMaterialQuantities }
-      delete newQuantities[materialId]
-      setEditMaterialQuantities(newQuantities)
-    }
-  }
-
-  const handleSaveEdit = async () => {
+  const handleEditSubmit = async () => {
     if (!editingLog) return
 
     try {
-      setIsUploading(true)
+      setSaving(true)
 
-      // First, restore the original quantities back to stock
-      editingLog.materialsUsed.forEach((material) => {
-        updateMaterialStock(material.id, material.quantity)
-      })
+      // Validate required fields
+      if (!formData.project || !formData.work_description || selectedWorkers.length === 0) {
+        alert("Please fill in all required fields")
+        return
+      }
 
-      const workersData = editSelectedWorkers.map((workerId) => {
-        const worker = availableWorkers.find((w) => w.id === workerId)!
-        return {
-          id: workerId,
-          name: worker.name,
-          hoursWorked: editWorkerHours[workerId] || 0,
+      const updatedLogData = {
+        date: formData.date,
+        project: formData.project,
+        work_description: formData.work_description,
+        workers_present: selectedWorkers,
+        hours_worked: formData.hours_worked,
+        materials_used: selectedMaterials,
+        notes: formData.notes,
+        weather: formData.weather,
+      }
+
+      // Update the daily log in database
+      const updatedLog = await updateDailyLog(editingLog.id, updatedLogData)
+      if (!updatedLog) {
+        alert("Failed to update daily log. Please try again.")
+        return
+      }
+
+      // Calculate material differences and update stock
+      const oldMaterials = editingLog.materials_used
+      const newMaterials = selectedMaterials
+
+      const materialUpdates = []
+      for (const material of materials) {
+        const oldUsage = oldMaterials.find((m) => m.material_id === material.id)?.quantity || 0
+        const newUsage = newMaterials.find((m) => m.material_id === material.id)?.quantity || 0
+        const difference = newUsage - oldUsage
+
+        if (difference !== 0) {
+          const newStock = Math.max(0, material.current_stock - difference)
+          const updatedMaterial = await updateMaterial(material.id, {
+            current_stock: newStock,
+            status: newStock <= material.min_stock ? "Low Stock" : newStock === 0 ? "Out of Stock" : "In Stock",
+            last_updated: new Date().toISOString().split("T")[0],
+          })
+          if (updatedMaterial) {
+            materialUpdates.push(updatedMaterial)
+          }
         }
-      })
+      }
 
-      const materialsData = editSelectedMaterials.map((materialId) => {
-        const material = materials.find((m) => m.id === materialId)!
-        return {
-          id: materialId,
-          name: material.name,
-          quantity: editMaterialQuantities[materialId] || 0,
-          unit: material.unit,
-        }
-      })
-
-      // Upload new photos to Vercel Blob (with fallback for preview mode)
-      const newPhotosData = await uploadPhotosToBlob(editUploadedPhotos)
-      const allPhotos = [...editingLog.photos, ...newPhotosData]
-
-      // Now deduct the new quantities from stock
-      editSelectedMaterials.forEach((materialId) => {
-        const usedQuantity = editMaterialQuantities[materialId] || 0
-        updateMaterialStock(materialId, -usedQuantity)
-      })
-
-      const updatedLogs = logs.map((log) =>
-        log.id === editingLog.id
-          ? {
-              ...editingLog,
-              workers: workersData,
-              materialsUsed: materialsData,
-              photos: allPhotos,
-            }
-          : log,
+      // Update local state
+      setMaterials((prev) =>
+        prev.map((material) => {
+          const updated = materialUpdates.find((u) => u.id === material.id)
+          return updated || material
+        }),
       )
 
-      setLogs(updatedLogs)
-
-      // Clean up photo previews
-      editUploadedPhotos.forEach((photo) => URL.revokeObjectURL(photo.preview))
-      setEditUploadedPhotos([])
-
-      setIsEditingLog(false)
+      setDailyLogs((prev) => prev.map((log) => (log.id === editingLog.id ? updatedLog : log)))
+      setShowEditDialog(false)
       setEditingLog(null)
-      setEditSelectedWorkers([])
-      setEditWorkerHours({})
-      setEditSelectedMaterials([])
-      setEditMaterialQuantities({})
+      resetForm()
+
+      console.log("Daily log updated successfully:", updatedLog)
     } catch (error) {
-      console.error("Error saving edit:", error)
+      console.error("Error updating daily log:", error)
+      alert("Error updating daily log. Please try again.")
     } finally {
-      setIsUploading(false)
+      setSaving(false)
     }
   }
 
-  const handleViewPhotos = (photos: Array<{ id: number; url: string; caption: string }>) => {
-    setViewingPhotos(photos)
-    setIsViewingPhotos(true)
+  const handleView = (log: DailyLog) => {
+    setSelectedLog(log)
+    setShowViewDialog(true)
   }
 
-  const getTotalHours = (workers: Array<{ hoursWorked: number }>) => {
-    return workers.reduce((total, worker) => total + worker.hoursWorked, 0)
+  const handleDelete = async (logId: number) => {
+    if (!confirm("Are you sure you want to delete this daily log?")) return
+
+    try {
+      const logToDelete = dailyLogs.find((log) => log.id === logId)
+      if (!logToDelete) return
+
+      // Delete from database
+      const success = await deleteDailyLog(logId)
+      if (!success) {
+        alert("Failed to delete daily log. Please try again.")
+        return
+      }
+
+      // Restore materials stock when deleting log
+      const materialUpdates = []
+      for (const usedMaterial of logToDelete.materials_used) {
+        const material = materials.find((m) => m.id === usedMaterial.material_id)
+        if (material) {
+          const newStock = material.current_stock + usedMaterial.quantity
+          const updatedMaterial = await updateMaterial(material.id, {
+            current_stock: newStock,
+            status: newStock <= material.min_stock ? "Low Stock" : "In Stock",
+            last_updated: new Date().toISOString().split("T")[0],
+          })
+          if (updatedMaterial) {
+            materialUpdates.push(updatedMaterial)
+          }
+        }
+      }
+
+      // Update local state
+      setMaterials((prev) =>
+        prev.map((material) => {
+          const updated = materialUpdates.find((u) => u.id === material.id)
+          return updated || material
+        }),
+      )
+
+      setDailyLogs((prev) => prev.filter((log) => log.id !== logId))
+    } catch (error) {
+      console.error("Error deleting daily log:", error)
+      alert("Error deleting daily log. Please try again.")
+    }
   }
 
   return (
@@ -501,37 +329,40 @@ export default function DailyLogsTab({ materials, setMaterials }: DailyLogsTabPr
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold">Daily Work Logs</h2>
-          <p className="text-gray-600">Track daily work progress, material usage, and photo documentation</p>
+          <p className="text-gray-600">Track daily work progress, materials used, and worker attendance</p>
         </div>
-        <Dialog open={isAddingLog} onOpenChange={setIsAddingLog}>
+        <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
           <DialogTrigger asChild>
-            <Button>
+            <Button onClick={() => setShowAddDialog(true)}>
               <Plus className="h-4 w-4 mr-2" />
-              Add Log Entry
+              Add Daily Log
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Add Daily Work Log</DialogTitle>
-              <DialogDescription>
-                Record daily work activities, workers, hours, materials used, and photos.
-              </DialogDescription>
+              <DialogDescription>Record today's work progress and material usage</DialogDescription>
             </DialogHeader>
-            <div className="grid gap-6 py-4">
-              {/* Basic Info */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="log-date">Date</Label>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Basic Information */}
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="date">Date *</Label>
                   <Input
-                    id="log-date"
+                    id="date"
                     type="date"
-                    value={newLog.date}
-                    onChange={(e) => setNewLog({ ...newLog, date: e.target.value })}
+                    value={formData.date}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, date: e.target.value }))}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="log-project">Project</Label>
-                  <Select value={newLog.project} onValueChange={(value) => setNewLog({ ...newLog, project: value })}>
+
+                <div>
+                  <Label htmlFor="project">Project *</Label>
+                  <Select
+                    value={formData.project}
+                    onValueChange={(value) => setFormData((prev) => ({ ...prev, project: value }))}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Select project" />
                     </SelectTrigger>
@@ -544,342 +375,514 @@ export default function DailyLogsTab({ materials, setMaterials }: DailyLogsTabPr
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
 
-              {/* Workers Selection */}
-              <div className="space-y-3">
-                <Label className="text-base font-medium">Workers & Hours</Label>
-                <div className="border rounded-lg p-4 space-y-3 max-h-60 overflow-y-auto">
-                  {availableWorkers.map((worker) => (
-                    <div key={worker.id} className="flex items-center justify-between space-x-3">
-                      <div className="flex items-center space-x-3">
-                        <Checkbox
-                          id={`worker-${worker.id}`}
-                          checked={selectedWorkers.includes(worker.id)}
-                          onCheckedChange={(checked) => handleWorkerSelection(worker.id, checked as boolean)}
-                        />
-                        <div>
-                          <Label htmlFor={`worker-${worker.id}`} className="font-medium">
-                            {worker.name}
-                          </Label>
-                          <p className="text-xs text-gray-500">{worker.specialty}</p>
-                        </div>
-                      </div>
-                      {selectedWorkers.includes(worker.id) && (
-                        <div className="flex items-center space-x-2">
-                          <Label htmlFor={`hours-${worker.id}`} className="text-sm">
-                            Hours:
-                          </Label>
-                          <Input
-                            id={`hours-${worker.id}`}
-                            type="number"
-                            step="0.5"
-                            min="0"
-                            max="24"
-                            value={workerHours[worker.id] || 8}
-                            onChange={(e) =>
-                              setWorkerHours({ ...workerHours, [worker.id]: Number.parseFloat(e.target.value) })
-                            }
-                            className="w-20"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                <div>
+                  <Label htmlFor="workDescription">Work Description *</Label>
+                  <Textarea
+                    id="workDescription"
+                    placeholder="Describe the work completed today..."
+                    value={formData.work_description}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, work_description: e.target.value }))}
+                    rows={3}
+                  />
                 </div>
-                {selectedWorkers.length > 0 && (
-                  <div className="text-sm text-gray-600">
-                    Selected: {selectedWorkers.length} workers, Total hours:{" "}
-                    {Object.values(workerHours).reduce((sum, hours) => sum + hours, 0)}
-                  </div>
-                )}
-              </div>
 
-              {/* Materials Selection */}
-              <div className="space-y-3">
-                <Label className="text-base font-medium">Materials Used</Label>
-                <div className="border rounded-lg p-4 space-y-3 max-h-60 overflow-y-auto">
-                  {materials.map((material) => (
-                    <div key={material.id} className="flex items-center justify-between space-x-3">
-                      <div className="flex items-center space-x-3">
-                        <Checkbox
-                          id={`material-${material.id}`}
-                          checked={selectedMaterials.includes(material.id)}
-                          onCheckedChange={(checked) => handleMaterialSelection(material.id, checked as boolean)}
-                          disabled={material.currentStock === 0}
-                        />
-                        <div>
-                          <Label htmlFor={`material-${material.id}`} className="font-medium">
-                            {material.name}
-                          </Label>
-                          <p className={`text-xs ${material.currentStock === 0 ? "text-red-500" : "text-gray-500"}`}>
-                            Stock: {material.currentStock} {material.unit}
-                            {material.currentStock === 0 && " (Out of Stock)"}
-                          </p>
-                        </div>
-                      </div>
-                      {selectedMaterials.includes(material.id) && (
-                        <div className="flex items-center space-x-2">
-                          <Label htmlFor={`quantity-${material.id}`} className="text-sm">
-                            Qty:
-                          </Label>
-                          <Input
-                            id={`quantity-${material.id}`}
-                            type="number"
-                            min="0"
-                            max={material.currentStock}
-                            value={materialQuantities[material.id] || 1}
-                            onChange={(e) =>
-                              setMaterialQuantities({
-                                ...materialQuantities,
-                                [material.id]: Number.parseInt(e.target.value),
-                              })
-                            }
-                            className="w-20"
-                          />
-                          <span className="text-xs text-gray-500">{material.unit}</span>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                <div>
+                  <Label htmlFor="hoursWorked">Hours Worked</Label>
+                  <Input
+                    id="hoursWorked"
+                    type="number"
+                    min="0"
+                    max="24"
+                    step="0.5"
+                    value={formData.hours_worked}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, hours_worked: Number.parseFloat(e.target.value) || 0 }))
+                    }
+                  />
                 </div>
-                {selectedMaterials.length > 0 && (
-                  <div className="text-sm text-gray-600">Selected: {selectedMaterials.length} materials</div>
-                )}
+
+                <div>
+                  <Label htmlFor="weather">Weather</Label>
+                  <Select
+                    value={formData.weather}
+                    onValueChange={(value) => setFormData((prev) => ({ ...prev, weather: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select weather" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {weatherOptions.map((weather) => (
+                        <SelectItem key={weather} value={weather}>
+                          {weather}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label htmlFor="notes">Notes</Label>
+                  <Textarea
+                    id="notes"
+                    placeholder="Additional notes or observations..."
+                    value={formData.notes}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, notes: e.target.value }))}
+                    rows={2}
+                  />
+                </div>
               </div>
 
-              {/* Photo Upload */}
-              <div className="space-y-3">
-                <Label className="text-base font-medium">Progress Photos</Label>
-                <div className="border rounded-lg p-4 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      onChange={handlePhotoUpload}
-                      className="hidden"
-                      id="photo-upload"
-                    />
-                    <Label htmlFor="photo-upload" className="cursor-pointer">
-                      <Button type="button" variant="outline" asChild>
-                        <span>
-                          <Camera className="h-4 w-4 mr-2" />
-                          Add Photos
-                        </span>
-                      </Button>
-                    </Label>
-                    <span className="text-sm text-gray-500">Upload progress photos (JPG, PNG)</span>
-                  </div>
-
-                  {uploadedPhotos.length > 0 && (
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                      {uploadedPhotos.map((photo, index) => (
-                        <div key={index} className="relative border rounded-lg p-2">
-                          <img
-                            src={photo.preview || "/placeholder.svg"}
-                            alt={`Upload ${index + 1}`}
-                            className="w-full h-32 object-cover rounded"
+              {/* Workers and Materials */}
+              <div className="space-y-4">
+                {/* Workers Present */}
+                <div>
+                  <Label>Workers Present *</Label>
+                  <div className="border rounded-lg p-3 max-h-40 overflow-y-auto">
+                    {workers
+                      .filter((w) => w.status === "Active")
+                      .map((worker) => (
+                        <div key={worker.id} className="flex items-center space-x-2 py-1">
+                          <Checkbox
+                            id={`worker-${worker.id}`}
+                            checked={selectedWorkers.includes(worker.name)}
+                            onCheckedChange={() => handleWorkerToggle(worker.name)}
                           />
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            size="sm"
-                            className="absolute top-1 right-1 h-6 w-6 p-0"
-                            onClick={() => removePhoto(index)}
+                          <Label htmlFor={`worker-${worker.id}`} className="text-sm">
+                            {worker.name} - {worker.role}
+                          </Label>
+                        </div>
+                      ))}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">Selected: {selectedWorkers.length} workers</p>
+                </div>
+
+                {/* Materials Used */}
+                <div>
+                  <Label>Materials Used</Label>
+                  <div className="space-y-2">
+                    <Select onValueChange={(value) => handleMaterialAdd(Number.parseInt(value))}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Add material" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {materials
+                          .filter((material) => !selectedMaterials.find((m) => m.material_id === material.id))
+                          .map((material) => (
+                            <SelectItem key={material.id} value={material.id.toString()}>
+                              {material.name} (Stock: {material.current_stock} {material.unit})
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+
+                    {selectedMaterials.length > 0 && (
+                      <div className="border rounded-lg p-3 space-y-2 max-h-40 overflow-y-auto">
+                        {selectedMaterials.map((material) => (
+                          <div
+                            key={material.material_id}
+                            className="flex items-center justify-between bg-gray-50 p-2 rounded"
                           >
-                            <X className="h-3 w-3" />
-                          </Button>
-                          <Input
-                            placeholder="Add caption..."
-                            value={photo.caption}
-                            onChange={(e) => updatePhotoCaption(index, e.target.value)}
-                            className="mt-2 text-xs"
-                          />
+                            <div className="flex-1">
+                              <p className="text-sm font-medium">{material.material_name}</p>
+                              <p className="text-xs text-gray-500">
+                                Available: {materials.find((m) => m.id === material.material_id)?.current_stock}{" "}
+                                {material.unit}
+                              </p>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <Input
+                                type="number"
+                                min="0"
+                                max={materials.find((m) => m.id === material.material_id)?.current_stock || 0}
+                                value={material.quantity}
+                                onChange={(e) =>
+                                  handleMaterialQuantityChange(
+                                    material.material_id,
+                                    Number.parseInt(e.target.value) || 0,
+                                  )
+                                }
+                                className="w-20"
+                              />
+                              <span className="text-xs text-gray-500">{material.unit}</span>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleMaterialRemove(material.material_id)}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-4">
+              <Button variant="outline" onClick={() => setShowAddDialog(false)} disabled={saving}>
+                Cancel
+              </Button>
+              <Button onClick={handleSubmit} disabled={saving}>
+                {saving ? "Saving..." : "Save Daily Log"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      {/* Daily Logs Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Daily Logs ({dailyLogs.length})</CardTitle>
+          <CardDescription>Overview of daily work activities and progress</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Date</TableHead>
+                <TableHead>Project</TableHead>
+                <TableHead>Workers</TableHead>
+                <TableHead>Hours</TableHead>
+                <TableHead>Materials</TableHead>
+                <TableHead>Weather</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {dailyLogs.map((log) => (
+                <TableRow key={log.id}>
+                  <TableCell>
+                    <div className="flex items-center">
+                      <Calendar className="h-4 w-4 mr-2 text-gray-400" />
+                      {log.date}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="font-medium">{log.project}</div>
+                    <div className="text-sm text-gray-500 truncate max-w-xs">{log.work_description}</div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center">
+                      <Users className="h-4 w-4 mr-2 text-gray-400" />
+                      {log.workers_present.length}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center">
+                      <Clock className="h-4 w-4 mr-2 text-gray-400" />
+                      {log.hours_worked}h
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center">
+                      <Package className="h-4 w-4 mr-2 text-gray-400" />
+                      {log.materials_used.length}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline">{log.weather}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="default">{log.status}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex space-x-2">
+                      <Button variant="outline" size="sm" onClick={() => handleView(log)}>
+                        <Eye className="h-3 w-3" />
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => handleEdit(log)}>
+                        <Edit className="h-3 w-3" />
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => handleDelete(log.id)}>
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          {dailyLogs.length === 0 && (
+            <div className="text-center py-8">
+              <p className="text-gray-500">No daily logs found. Add your first log to get started!</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* View Dialog */}
+      <Dialog open={showViewDialog} onOpenChange={setShowViewDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Daily Log Details</DialogTitle>
+            <DialogDescription>Complete information for this work day</DialogDescription>
+          </DialogHeader>
+
+          {selectedLog && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="font-medium">Date</Label>
+                  <p>{selectedLog.date}</p>
+                </div>
+                <div>
+                  <Label className="font-medium">Project</Label>
+                  <p>{selectedLog.project}</p>
+                </div>
+                <div>
+                  <Label className="font-medium">Hours Worked</Label>
+                  <p>{selectedLog.hours_worked} hours</p>
+                </div>
+                <div>
+                  <Label className="font-medium">Weather</Label>
+                  <p>{selectedLog.weather}</p>
+                </div>
+              </div>
+
+              <div>
+                <Label className="font-medium">Work Description</Label>
+                <p className="mt-1">{selectedLog.work_description}</p>
+              </div>
+
+              <div>
+                <Label className="font-medium">Workers Present ({selectedLog.workers_present.length})</Label>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {selectedLog.workers_present.map((worker) => (
+                    <Badge key={worker} variant="secondary">
+                      {worker}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              {selectedLog.materials_used.length > 0 && (
+                <div>
+                  <Label className="font-medium">Materials Used</Label>
+                  <div className="mt-1 space-y-2">
+                    {selectedLog.materials_used.map((material) => (
+                      <div
+                        key={material.material_id}
+                        className="flex justify-between items-center bg-gray-50 p-2 rounded"
+                      >
+                        <span>{material.material_name}</span>
+                        <span className="font-medium">
+                          {material.quantity} {material.unit}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {selectedLog.notes && (
+                <div>
+                  <Label className="font-medium">Notes</Label>
+                  <p className="mt-1">{selectedLog.notes}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Daily Work Log</DialogTitle>
+            <DialogDescription>Update work progress and material usage</DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Basic Information */}
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="edit-date">Date *</Label>
+                <Input
+                  id="edit-date"
+                  type="date"
+                  value={formData.date}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, date: e.target.value }))}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="edit-project">Project *</Label>
+                <Select
+                  value={formData.project}
+                  onValueChange={(value) => setFormData((prev) => ({ ...prev, project: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select project" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects.map((project) => (
+                      <SelectItem key={project} value={project}>
+                        {project}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="edit-workDescription">Work Description *</Label>
+                <Textarea
+                  id="edit-workDescription"
+                  placeholder="Describe the work completed today..."
+                  value={formData.work_description}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, work_description: e.target.value }))}
+                  rows={3}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="edit-hoursWorked">Hours Worked</Label>
+                <Input
+                  id="edit-hoursWorked"
+                  type="number"
+                  min="0"
+                  max="24"
+                  step="0.5"
+                  value={formData.hours_worked}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, hours_worked: Number.parseFloat(e.target.value) || 0 }))
+                  }
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="edit-weather">Weather</Label>
+                <Select
+                  value={formData.weather}
+                  onValueChange={(value) => setFormData((prev) => ({ ...prev, weather: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select weather" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {weatherOptions.map((weather) => (
+                      <SelectItem key={weather} value={weather}>
+                        {weather}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="edit-notes">Notes</Label>
+                <Textarea
+                  id="edit-notes"
+                  placeholder="Additional notes or observations..."
+                  value={formData.notes}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, notes: e.target.value }))}
+                  rows={2}
+                />
+              </div>
+            </div>
+
+            {/* Workers and Materials */}
+            <div className="space-y-4">
+              {/* Workers Present */}
+              <div>
+                <Label>Workers Present *</Label>
+                <div className="border rounded-lg p-3 max-h-40 overflow-y-auto">
+                  {workers
+                    .filter((w) => w.status === "Active")
+                    .map((worker) => (
+                      <div key={worker.id} className="flex items-center space-x-2 py-1">
+                        <Checkbox
+                          id={`edit-worker-${worker.id}`}
+                          checked={selectedWorkers.includes(worker.name)}
+                          onCheckedChange={() => handleWorkerToggle(worker.name)}
+                        />
+                        <Label htmlFor={`edit-worker-${worker.id}`} className="text-sm">
+                          {worker.name} - {worker.role}
+                        </Label>
+                      </div>
+                    ))}
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Selected: {selectedWorkers.length} workers</p>
+              </div>
+
+              {/* Materials Used */}
+              <div>
+                <Label>Materials Used</Label>
+                <div className="space-y-2">
+                  <Select onValueChange={(value) => handleMaterialAdd(Number.parseInt(value))}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Add material" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {materials
+                        .filter((material) => !selectedMaterials.find((m) => m.material_id === material.id))
+                        .map((material) => (
+                          <SelectItem key={material.id} value={material.id.toString()}>
+                            {material.name} (Stock: {material.current_stock} {material.unit})
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+
+                  {selectedMaterials.length > 0 && (
+                    <div className="border rounded-lg p-3 space-y-2 max-h-40 overflow-y-auto">
+                      {selectedMaterials.map((material) => (
+                        <div
+                          key={material.material_id}
+                          className="flex items-center justify-between bg-gray-50 p-2 rounded"
+                        >
+                          <div className="flex-1">
+                            <p className="text-sm font-medium">{material.material_name}</p>
+                            <p className="text-xs text-gray-500">
+                              Available: {materials.find((m) => m.id === material.material_id)?.current_stock}{" "}
+                              {material.unit}
+                            </p>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Input
+                              type="number"
+                              min="0"
+                              value={material.quantity}
+                              onChange={(e) =>
+                                handleMaterialQuantityChange(material.material_id, Number.parseInt(e.target.value) || 0)
+                              }
+                              className="w-20"
+                            />
+                            <span className="text-xs text-gray-500">{material.unit}</span>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleMaterialRemove(material.material_id)}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
                         </div>
                       ))}
                     </div>
                   )}
                 </div>
               </div>
-
-              {/* Tasks and Notes */}
-              <div className="space-y-2">
-                <Label htmlFor="log-tasks">Tasks Completed</Label>
-                <Textarea
-                  id="log-tasks"
-                  value={newLog.tasksCompleted}
-                  onChange={(e) => setNewLog({ ...newLog, tasksCompleted: e.target.value })}
-                  placeholder="Describe what was accomplished today..."
-                  rows={3}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="log-notes">Additional Notes</Label>
-                <Textarea
-                  id="log-notes"
-                  value={newLog.notes}
-                  onChange={(e) => setNewLog({ ...newLog, notes: e.target.value })}
-                  placeholder="Any additional observations, issues, or next steps..."
-                  rows={2}
-                />
-              </div>
             </div>
-            <div className="flex justify-end space-x-2">
-              <Button variant="outline" onClick={() => setIsAddingLog(false)}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleAddLog}
-                disabled={!newLog.project || selectedWorkers.length === 0 || !newLog.tasksCompleted || isUploading}
-              >
-                {isUploading ? "Saving..." : "Save Log Entry"}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+          </div>
 
-        {/* Photo Viewer Dialog */}
-        <Dialog open={isViewingPhotos} onOpenChange={setIsViewingPhotos}>
-          <DialogContent className="max-w-4xl">
-            <DialogHeader>
-              <DialogTitle>Progress Photos</DialogTitle>
-            </DialogHeader>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-96 overflow-y-auto">
-              {viewingPhotos.map((photo) => (
-                <div key={photo.id} className="space-y-2">
-                  <img
-                    src={photo.url || "/placeholder.svg"}
-                    alt={photo.caption}
-                    className="w-full h-48 object-cover rounded-lg"
-                  />
-                  {photo.caption && <p className="text-sm text-gray-600 text-center">{photo.caption}</p>}
-                </div>
-              ))}
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      <div className="space-y-4">
-        {logs.map((log) => (
-          <Card key={log.id}>
-            <CardHeader>
-              <div className="flex justify-between items-start">
-                <div>
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <Calendar className="h-4 w-4" />
-                    {log.date}
-                  </CardTitle>
-                  <CardDescription className="flex items-center gap-4 mt-1">
-                    <span className="flex items-center gap-1">
-                      <User className="h-3 w-3" />
-                      {log.workers.length} workers
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
-                      {getTotalHours(log.workers)}h total
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Package className="h-3 w-3" />
-                      {log.materialsUsed.length} materials
-                    </span>
-                    {log.photos && log.photos.length > 0 && (
-                      <span className="flex items-center gap-1">
-                        <Camera className="h-3 w-3" />
-                        {log.photos.length} photos
-                      </span>
-                    )}
-                  </CardDescription>
-                </div>
-                <Badge variant={log.status === "Completed" ? "default" : "secondary"}>{log.status}</Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <h4 className="font-medium text-sm text-gray-700 mb-1">Project</h4>
-                <p className="text-sm">{log.project}</p>
-              </div>
-
-              <div>
-                <h4 className="font-medium text-sm text-gray-700 mb-2">Workers & Hours</h4>
-                <div className="flex flex-wrap gap-2">
-                  {log.workers.map((worker) => (
-                    <Badge key={worker.id} variant="outline" className="text-xs">
-                      {worker.name}: {worker.hoursWorked}h
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <h4 className="font-medium text-sm text-gray-700 mb-1">Tasks Completed</h4>
-                <p className="text-sm">{log.tasksCompleted}</p>
-              </div>
-
-              <div>
-                <h4 className="font-medium text-sm text-gray-700 mb-2">Materials Used</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  {log.materialsUsed.map((material) => (
-                    <div key={material.id} className="flex justify-between items-center text-sm bg-gray-50 p-2 rounded">
-                      <span>{material.name}</span>
-                      <span className="font-medium">
-                        {material.quantity} {material.unit}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {log.photos && log.photos.length > 0 && (
-                <div>
-                  <h4 className="font-medium text-sm text-gray-700 mb-2">Progress Photos</h4>
-                  <div className="flex gap-2 overflow-x-auto">
-                    {log.photos.slice(0, 3).map((photo) => (
-                      <img
-                        key={photo.id}
-                        src={photo.url || "/placeholder.svg"}
-                        alt={photo.caption}
-                        className="w-20 h-20 object-cover rounded cursor-pointer hover:opacity-80"
-                        onClick={() => handleViewPhotos(log.photos)}
-                      />
-                    ))}
-                    {log.photos.length > 3 && (
-                      <div
-                        className="w-20 h-20 bg-gray-100 rounded flex items-center justify-center cursor-pointer hover:bg-gray-200"
-                        onClick={() => handleViewPhotos(log.photos)}
-                      >
-                        <span className="text-xs text-gray-600">+{log.photos.length - 3}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {log.notes && (
-                <div>
-                  <h4 className="font-medium text-sm text-gray-700 mb-1">Notes</h4>
-                  <p className="text-sm text-gray-600">{log.notes}</p>
-                </div>
-              )}
-
-              <div className="flex justify-end mt-4 space-x-2">
-                {log.photos && log.photos.length > 0 && (
-                  <Button variant="outline" size="sm" onClick={() => handleViewPhotos(log.photos)}>
-                    <Eye className="h-4 w-4 mr-1" />
-                    View Photos
-                  </Button>
-                )}
-                <Button variant="outline" size="sm" onClick={() => handleEditLog(log)}>
-                  <Edit className="h-4 w-4 mr-1" />
-                  Edit Log
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+          <div className="flex justify-end space-x-2 pt-4">
+            <Button variant="outline" onClick={() => setShowEditDialog(false)} disabled={saving}>
+              Cancel
+            </Button>
+            <Button onClick={handleEditSubmit} disabled={saving}>
+              {saving ? "Updating..." : "Update Daily Log"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
