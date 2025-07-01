@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { AlertCircle, Building2 } from "lucide-react"
+import { AlertCircle, Building2, Play } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
 export default function LoginForm() {
@@ -18,20 +18,32 @@ export default function LoginForm() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
 
+  // Check if Supabase is configured
+  const isSupabaseConfigured = process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  const handleDemoMode = () => {
+    setLoading(true)
+    setError("Entering demo mode...")
+    setTimeout(() => {
+      window.location.href = "/dashboard"
+    }, 1000)
+  }
+
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError("")
 
+    // If Supabase is not configured, go to demo mode
+    if (!isSupabaseConfigured) {
+      handleDemoMode()
+      return
+    }
+
     const supabase = createClientClient()
 
     if (!supabase) {
-      // Demo mode - simulate successful login
-      setError("Demo mode: Redirecting to dashboard...")
-      setTimeout(() => {
-        window.location.href = "/dashboard"
-      }, 1000)
-      setLoading(false)
+      handleDemoMode()
       return
     }
 
@@ -47,8 +59,12 @@ export default function LoginForm() {
         window.location.href = "/dashboard"
       }
     } catch (error) {
-      setError("An unexpected error occurred")
+      // Handle network errors and other fetch failures
       console.error("Login error:", error)
+      setError("Network error. Entering demo mode...")
+      setTimeout(() => {
+        window.location.href = "/dashboard"
+      }, 2000)
     }
     setLoading(false)
   }
@@ -57,6 +73,12 @@ export default function LoginForm() {
     e.preventDefault()
     setLoading(true)
     setError("")
+
+    if (!isSupabaseConfigured) {
+      setError("Demo mode: Sign up is not available in preview mode.")
+      setLoading(false)
+      return
+    }
 
     const supabase = createClientClient()
 
@@ -78,8 +100,8 @@ export default function LoginForm() {
         setError("Check your email for the confirmation link!")
       }
     } catch (error) {
-      setError("An unexpected error occurred")
       console.error("Sign up error:", error)
+      setError("Network error. Sign up is not available in demo mode.")
     }
     setLoading(false)
   }
@@ -94,6 +116,15 @@ export default function LoginForm() {
         <CardDescription>Manage your construction projects, workers, and daily operations</CardDescription>
       </CardHeader>
       <CardContent>
+        {!isSupabaseConfigured && (
+          <Alert className="mb-4 border-blue-200 bg-blue-50">
+            <Play className="h-4 w-4 text-blue-600" />
+            <AlertDescription className="text-blue-800">
+              <strong>Demo Mode Available:</strong> Supabase is not configured. You can try the demo version below.
+            </AlertDescription>
+          </Alert>
+        )}
+
         <Tabs defaultValue="signin" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="signin">Sign In</TabsTrigger>
@@ -110,7 +141,7 @@ export default function LoginForm() {
                   placeholder="manager@company.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  required
+                  required={isSupabaseConfigured}
                 />
               </div>
               <div className="space-y-2">
@@ -120,11 +151,11 @@ export default function LoginForm() {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  required
+                  required={isSupabaseConfigured}
                 />
               </div>
               <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? "Signing in..." : "Sign In"}
+                {loading ? "Signing in..." : isSupabaseConfigured ? "Sign In" : "Sign In (Demo Mode)"}
               </Button>
             </form>
           </TabsContent>
@@ -139,7 +170,7 @@ export default function LoginForm() {
                   placeholder="manager@company.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  required
+                  required={isSupabaseConfigured}
                 />
               </div>
               <div className="space-y-2">
@@ -149,20 +180,43 @@ export default function LoginForm() {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  required
+                  required={isSupabaseConfigured}
                 />
               </div>
-              <Button type="submit" className="w-full" disabled={loading}>
+              <Button type="submit" className="w-full" disabled={loading || !isSupabaseConfigured}>
                 {loading ? "Creating account..." : "Create Account"}
               </Button>
             </form>
           </TabsContent>
         </Tabs>
 
+        {/* Demo Mode Button */}
+        {!isSupabaseConfigured && (
+          <div className="mt-4">
+            <Button
+              onClick={handleDemoMode}
+              variant="outline"
+              className="w-full border-blue-200 text-blue-700 hover:bg-blue-50 bg-transparent"
+              disabled={loading}
+            >
+              <Play className="mr-2 h-4 w-4" />
+              {loading ? "Loading Demo..." : "Try Demo Mode"}
+            </Button>
+          </div>
+        )}
+
         {error && (
-          <Alert className="mt-4">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
+          <Alert
+            className={`mt-4 ${error.includes("Demo mode") || error.includes("demo mode") ? "border-blue-200 bg-blue-50" : ""}`}
+          >
+            <AlertCircle
+              className={`h-4 w-4 ${error.includes("Demo mode") || error.includes("demo mode") ? "text-blue-600" : ""}`}
+            />
+            <AlertDescription
+              className={error.includes("Demo mode") || error.includes("demo mode") ? "text-blue-800" : ""}
+            >
+              {error}
+            </AlertDescription>
           </Alert>
         )}
       </CardContent>
