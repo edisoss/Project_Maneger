@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -81,6 +82,13 @@ export default function WorkersTab({
       status: "Active",
       hire_date: new Date().toISOString().split("T")[0],
     })
+  }
+
+  const handleSkillToggle = (skillName: string, checked: boolean) => {
+    setFormData((prev) => ({
+      ...prev,
+      skills: checked ? [...prev.skills, skillName] : prev.skills.filter((s) => s !== skillName),
+    }))
   }
 
   const handleAddWorker = async () => {
@@ -253,7 +261,7 @@ export default function WorkersTab({
   const onLeaveWorkers = workers.filter((w) => w.status === "On Leave").length
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-6">
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold">Workers Management</h2>
@@ -346,6 +354,28 @@ export default function WorkersTab({
                     value={formData.hire_date}
                     onChange={(e) => setFormData((prev) => ({ ...prev, hire_date: e.target.value }))}
                   />
+                </div>
+                <div>
+                  <Label>Skills</Label>
+                  <div className="grid grid-cols-2 gap-2 mt-2 max-h-32 overflow-y-auto border rounded p-2">
+                    {skills.map((skill) => (
+                      <div key={skill.id} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`skill-${skill.id}`}
+                          checked={formData.skills.includes(skill.name)}
+                          onCheckedChange={(checked) => handleSkillToggle(skill.name, checked as boolean)}
+                        />
+                        <Label htmlFor={`skill-${skill.id}`} className="text-sm">
+                          {skill.name}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                  {skills.length === 0 && (
+                    <p className="text-sm text-gray-500 mt-2">
+                      No skills available. Add skills in Manage Roles & Skills.
+                    </p>
+                  )}
                 </div>
               </div>
               <div className="flex justify-end space-x-2">
@@ -443,15 +473,21 @@ export default function WorkersTab({
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
-                      {worker.skills?.slice(0, 2).map((skill, index) => (
-                        <Badge key={index} variant="secondary" className="text-xs">
-                          {skill}
-                        </Badge>
-                      ))}
-                      {worker.skills && worker.skills.length > 2 && (
-                        <Badge variant="secondary" className="text-xs">
-                          +{worker.skills.length - 2}
-                        </Badge>
+                      {worker.skills && worker.skills.length > 0 ? (
+                        <>
+                          {worker.skills.slice(0, 2).map((skill, index) => (
+                            <Badge key={index} variant="secondary" className="text-xs">
+                              {skill}
+                            </Badge>
+                          ))}
+                          {worker.skills.length > 2 && (
+                            <Badge variant="secondary" className="text-xs">
+                              +{worker.skills.length - 2}
+                            </Badge>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-sm text-gray-500">No skills</span>
                       )}
                     </div>
                   </TableCell>
@@ -551,6 +587,26 @@ export default function WorkersTab({
                 value={formData.hire_date}
                 onChange={(e) => setFormData((prev) => ({ ...prev, hire_date: e.target.value }))}
               />
+            </div>
+            <div>
+              <Label>Skills</Label>
+              <div className="grid grid-cols-2 gap-2 mt-2 max-h-32 overflow-y-auto border rounded p-2">
+                {skills.map((skill) => (
+                  <div key={skill.id} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`edit-skill-${skill.id}`}
+                      checked={formData.skills.includes(skill.name)}
+                      onCheckedChange={(checked) => handleSkillToggle(skill.name, checked as boolean)}
+                    />
+                    <Label htmlFor={`edit-skill-${skill.id}`} className="text-sm">
+                      {skill.name}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+              {skills.length === 0 && (
+                <p className="text-sm text-gray-500 mt-2">No skills available. Add skills in Manage Roles & Skills.</p>
+              )}
             </div>
           </div>
           <div className="flex justify-end space-x-2">
