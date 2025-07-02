@@ -37,6 +37,7 @@ import {
   Eye,
   Download,
   Loader2,
+  MapPin,
 } from "lucide-react"
 import { addDailyLog, updateDailyLog, deleteDailyLog } from "@/lib/database"
 import type { DailyLog, Project, Worker, Material } from "@/lib/database"
@@ -77,6 +78,7 @@ export default function DailyLogsTab({
     date: new Date().toISOString().split("T")[0],
     project_id: 0,
     work_completed: "",
+    working_place: "",
     hours_worked: 0,
     workers_present: [] as string[],
     materials_used: [] as Array<{
@@ -105,6 +107,7 @@ export default function DailyLogsTab({
       date: new Date().toISOString().split("T")[0],
       project_id: 0,
       work_completed: "",
+      working_place: "",
       hours_worked: 0,
       workers_present: [],
       materials_used: [],
@@ -126,6 +129,7 @@ export default function DailyLogsTab({
         date: formData.date,
         project_id: formData.project_id,
         work_completed: formData.work_completed,
+        working_place: formData.working_place,
         hours_worked: formData.hours_worked || 0,
         workers_present: formData.workers_present,
         materials_used: formData.materials_used.map((m) => ({
@@ -176,6 +180,7 @@ export default function DailyLogsTab({
       date: log.date,
       project_id: log.project_id,
       work_completed: log.work_completed || "",
+      working_place: log.working_place || "",
       hours_worked: log.hours_worked || 0,
       workers_present: log.workers_present || [],
       materials_used:
@@ -205,6 +210,7 @@ export default function DailyLogsTab({
         date: formData.date,
         project_id: formData.project_id,
         work_completed: formData.work_completed,
+        working_place: formData.working_place,
         hours_worked: formData.hours_worked || 0,
         workers_present: formData.workers_present,
         materials_used: formData.materials_used.map((m) => ({
@@ -363,6 +369,10 @@ export default function DailyLogsTab({
     yPosition += 8
     doc.text(`Project: ${log.project_name || "Unknown"}`, 20, yPosition)
     yPosition += 8
+    if (log.working_place) {
+      doc.text(`Working Place: ${log.working_place}`, 20, yPosition)
+      yPosition += 8
+    }
     doc.text(`Status: ${log.status}`, 20, yPosition)
     yPosition += 8
     doc.text(`Weather: ${log.weather}`, 20, yPosition)
@@ -567,6 +577,16 @@ export default function DailyLogsTab({
                         )}
                       </SelectContent>
                     </Select>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="working_place">Working Place</Label>
+                    <Input
+                      id="working_place"
+                      placeholder="Enter working location"
+                      value={formData.working_place}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, working_place: e.target.value }))}
+                    />
                   </div>
 
                   <div>
@@ -806,6 +826,7 @@ export default function DailyLogsTab({
                 <TableHead>Title</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Project</TableHead>
+                <TableHead>Working Place</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Weather</TableHead>
                 <TableHead>Hours</TableHead>
@@ -824,6 +845,12 @@ export default function DailyLogsTab({
                   <TableCell>{new Date(log.date).toLocaleDateString()}</TableCell>
                   <TableCell>
                     <Badge variant="outline">{log.project_name || "Unknown"}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1">
+                      <MapPin className="h-3 w-3 text-gray-400" />
+                      <span className="text-sm">{log.working_place || "Not specified"}</span>
+                    </div>
                   </TableCell>
                   <TableCell>
                     <Badge
@@ -897,6 +924,13 @@ export default function DailyLogsTab({
                 <div>
                   <Label className="font-semibold">Project</Label>
                   <p>{selectedLog.project_name || "Unknown"}</p>
+                </div>
+                <div>
+                  <Label className="font-semibold">Working Place</Label>
+                  <div className="flex items-center gap-2">
+                    <MapPin className="h-4 w-4 text-gray-400" />
+                    <p>{selectedLog.working_place || "Not specified"}</p>
+                  </div>
                 </div>
                 <div>
                   <Label className="font-semibold">Status</Label>
@@ -1024,6 +1058,16 @@ export default function DailyLogsTab({
                     )}
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="edit-working_place">Working Place</Label>
+                <Input
+                  id="edit-working_place"
+                  placeholder="Enter working location"
+                  value={formData.working_place}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, working_place: e.target.value }))}
+                />
               </div>
 
               <div>

@@ -38,6 +38,7 @@ export interface DailyLog {
   project_name?: string
   work_completed?: string // UI alias
   work_description?: string // DB column
+  working_place?: string // NEW field for location/place of work
   hours_worked?: number // NEW (optional in UI, required in DB)
   workers_present: string[]
   materials_used: Array<{
@@ -383,6 +384,7 @@ export async function addDailyLog(logData: {
   date: string
   project_id: number
   work_completed: string
+  working_place?: string
   workers_present: string[]
   materials_used: Array<{
     material_id: number
