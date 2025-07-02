@@ -3,6 +3,7 @@ import { createClientClient } from "./supabase-client"
 export interface Material {
   id: number
   name: string
+  description?: string
   category: string
   current_stock: number
   min_stock: number

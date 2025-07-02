@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -99,6 +100,7 @@ export default function MaterialsTab({
 
   const [formData, setFormData] = useState({
     name: "",
+    description: "",
     category: "",
     current_stock: 0,
     min_stock: 0,
@@ -135,6 +137,7 @@ export default function MaterialsTab({
   const resetForm = () => {
     setFormData({
       name: "",
+      description: "",
       category: materialCategories[0]?.name || "",
       current_stock: 0,
       min_stock: 0,
@@ -189,6 +192,7 @@ export default function MaterialsTab({
     setSelectedMaterial(material)
     setFormData({
       name: material.name,
+      description: (material as any).description || "",
       category: material.category,
       current_stock: material.current_stock,
       min_stock: material.min_stock,
@@ -444,7 +448,7 @@ export default function MaterialsTab({
   const activeMaterials = materials.filter((m) => m.status === "Active").length
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-6">
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold">Materials Management</h2>
@@ -503,6 +507,17 @@ export default function MaterialsTab({
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    placeholder="Enter material description (optional)"
+                    value={formData.description}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
+                    rows={3}
+                  />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -727,6 +742,7 @@ export default function MaterialsTab({
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
+                <TableHead>Description</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead>Location</TableHead>
                 <TableHead>Stock</TableHead>
@@ -740,6 +756,11 @@ export default function MaterialsTab({
                 <TableRow key={material.id}>
                   <TableCell>
                     <div className="font-medium">{material.name}</div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="max-w-xs truncate text-sm text-gray-600">
+                      {(material as any).description || "No description"}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline">{material.category}</Badge>
@@ -900,6 +921,17 @@ export default function MaterialsTab({
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            <div>
+              <Label htmlFor="edit-description">Description</Label>
+              <Textarea
+                id="edit-description"
+                placeholder="Enter material description (optional)"
+                value={formData.description}
+                onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
+                rows={3}
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
