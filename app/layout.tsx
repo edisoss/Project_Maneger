@@ -1,9 +1,10 @@
 import type { Metadata } from 'next'
+import { Toaster } from "@/components/ui/toaster"
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'v0 App',
-  description: 'Created with v0',
+  title: 'ConstructPro - Construction Management',
+  description: 'Professional Construction Management System',
   generator: 'v0.dev',
 }
 
@@ -14,7 +15,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        {children}
+        <Toaster />
+      </body>
     </html>
   )
 }
