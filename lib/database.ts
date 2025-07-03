@@ -42,9 +42,12 @@ export interface DailyLog {
   workers_present: string[]
   materials_used: Array<{
     material_id: string
+    material_name?: string
     quantity: number
+    unit?: string
   }>
   equipment_used: string[]
+  hours_worked: number
   work_completed: string
   issues_encountered: string
   safety_incidents: string
@@ -108,7 +111,7 @@ export interface MaterialLocation {
   id: string
   name: string
   description: string
-  address: string
+  address?: string
   created_at: string
 }
 
@@ -120,6 +123,81 @@ export interface Profile {
   is_admin: boolean
   created_at: string
   updated_at: string
+}
+
+export interface Activity {
+  id: string
+  type: "project" | "worker" | "material" | "daily_log" | "user" | "system"
+  title: string
+  description: string
+  icon: string
+  variant: "default" | "secondary" | "destructive" | "outline"
+  reference_type?: string
+  reference_id?: string
+  created_by?: string
+  created_at: string
+  updated_at: string
+}
+
+// Activities functions
+export async function getActivities(): Promise<Activity[]> {
+  const supabase = createClientClient()
+  if (!supabase) return []
+
+  try {
+    const { data, error } = await supabase
+      .from("activities")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(20)
+
+    if (error) {
+      console.error("Error fetching activities:", error)
+      return []
+    }
+
+    return data || []
+  } catch (error) {
+    console.error("Error in getActivities:", error)
+    return []
+  }
+}
+
+export async function addActivity(activity: {
+  type: "project" | "worker" | "material" | "daily_log" | "user" | "system"
+  title: string
+  description: string
+  icon: string
+  variant?: "default" | "secondary" | "destructive" | "outline"
+  reference_type?: string
+  reference_id?: string
+  created_by?: string
+}): Promise<Activity | null> {
+  try {
+    const supabase = createClientClient()
+    if (!supabase) {
+      console.error("Supabase client not available")
+      return null
+    }
+
+    const activityData = {
+      ...activity,
+      variant: activity.variant || "default",
+      created_by: activity.created_by || "system",
+    }
+
+    const { data, error } = await supabase.from("activities").insert([activityData]).select().single()
+
+    if (error) {
+      console.error("Error adding activity:", error)
+      return null
+    }
+
+    return data
+  } catch (error) {
+    console.error("Error in addActivity:", error)
+    return null
+  }
 }
 
 // Profiles functions
@@ -464,6 +542,7 @@ export async function getDailyLogs(): Promise<DailyLog[]> {
           project_name:
             allProjects?.find((p) => p.id === log.project_id)?.name ?? (log as any).project ?? "Unknown Project",
           work_completed: (log as any).work_description ?? "",
+          equipment_used: (log as any).equipment_used ?? [],
         })) ?? []
       )
     }
@@ -477,6 +556,7 @@ export async function getDailyLogs(): Promise<DailyLog[]> {
           (log as any).project ?? // fallback to legacy column
           "Unknown Project",
         work_completed: (log as any).work_description ?? "",
+        equipment_used: (log as any).equipment_used ?? [],
       })) ?? []
     )
   } catch (error) {
@@ -498,6 +578,7 @@ export async function addDailyLog(logData: {
     quantity: number
   }>
   equipment_used: string[]
+  hours_worked: number
   work_completed: string
   issues_encountered: string
   safety_incidents: string
@@ -511,8 +592,41 @@ export async function addDailyLog(logData: {
       return null
     }
 
+    const { project_id } = logData // Declare project_id before using it
+
+    // Look up project name for NOT-NULL "project" column
+    const { data: projRow } = await supabase.from("projects").select("name").eq("id", project_id).single()
+    const project_name_for_column = projRow?.name ?? project_id // fallback
+
+    // --- build an object that matches the DB column names exactly ---
+    const {
+      title,
+      date,
+      weather,
+      temperature,
+      workers_present,
+      materials_used,
+      equipment_used, // ← add this
+      work_completed,
+      hours_worked,
+      status,
+      working_place,
+    } = logData
+
     const logToInsert = {
-      ...logData,
+      project: project_name_for_column, // <-- legacy NOT-NULL column
+      title,
+      date,
+      project_id,
+      weather,
+      temperature,
+      workers_present,
+      materials_used,
+      equipment_used: equipment_used,
+      hours_worked,
+      work_description: work_completed, // (already fixed earlier)
+      status,
+      working_place,
       created_by: "admin@company.com",
     }
 
@@ -534,7 +648,7 @@ export async function addDailyLog(logData: {
           // Get current stock
           const { data: currentMaterial, error: fetchError } = await supabase
             .from("materials")
-            .select("current_stock")
+            .select("current_stock, name, unit")
             .eq("id", material.material_id)
             .single()
 
@@ -569,7 +683,7 @@ export async function addDailyLog(logData: {
               new_stock: newStock,
               reference_type: "daily_log",
               reference_id: data.id,
-              project: `Project ID: ${logData.project_id}`,
+              project: `Project: ${project_name_for_column}`,
               notes: `Used in daily work: ${logData.work_completed.substring(0, 100)}`,
               created_by: "admin@company.com",
             })
@@ -610,6 +724,18 @@ export async function updateDailyLog(id: string, updates: Partial<DailyLog>): Pr
       return null
     }
 
+    // Get the original log to see what materials were previously used
+    const { data: originalLog } = await supabase
+      .from("daily_logs")
+      .select("materials_used, project_id")
+      .eq("id", id)
+      .single()
+
+    if (!originalLog) {
+      console.error("Original log not found")
+      return null
+    }
+
     // Handle the work_completed -> work_description mapping
     const updateData = { ...updates }
     if (updates.work_completed !== undefined) {
@@ -617,6 +743,13 @@ export async function updateDailyLog(id: string, updates: Partial<DailyLog>): Pr
       delete (updateData as any).work_completed
     }
 
+    // Keep legacy "project" column in sync if project_id is being changed
+    if (updates.project_id !== undefined) {
+      const { data: projRow } = await supabase.from("projects").select("name").eq("id", updates.project_id).single()
+      ;(updateData as any).project = projRow?.name ?? updates.project_id
+    }
+
+    // First update the log record
     const { data, error } = await supabase.from("daily_logs").update(updateData).eq("id", id).select().single()
 
     if (error) {
@@ -628,82 +761,81 @@ export async function updateDailyLog(id: string, updates: Partial<DailyLog>): Pr
     if (updates.materials_used) {
       console.log("Processing material stock updates for edited log:", id)
 
-      // Get the original log to see what materials were previously used
-      const { data: originalLog } = await supabase.from("daily_logs").select("materials_used").eq("id", id).single()
+      // Create maps for easier comparison
+      const originalMaterialsMap = new Map()
+      ;(originalLog.materials_used || []).forEach((mat) => {
+        originalMaterialsMap.set(mat.material_id, mat.quantity)
+      })
 
-      if (originalLog && originalLog.materials_used) {
-        // First, restore stock for previously used materials
-        for (const originalMaterial of originalLog.materials_used) {
-          try {
-            const { data: currentMaterial } = await supabase
-              .from("materials")
-              .select("current_stock")
-              .eq("id", originalMaterial.material_id)
-              .single()
+      const newMaterialsMap = new Map()
+      updates.materials_used.forEach((mat) => {
+        newMaterialsMap.set(mat.material_id, mat.quantity)
+      })
 
-            if (currentMaterial) {
-              const restoredStock = currentMaterial.current_stock + originalMaterial.quantity
-              console.log(
-                `Restoring stock for ${originalMaterial.material_id}: ${currentMaterial.current_stock} + ${originalMaterial.quantity} = ${restoredStock}`,
-              )
+      // Get project name for reference
+      const projectId = updates.project_id || originalLog.project_id
+      const { data: projRow } = await supabase.from("projects").select("name").eq("id", projectId).single()
+      const projectName = projRow?.name || "Unknown Project"
 
-              await supabase
-                .from("materials")
-                .update({ current_stock: restoredStock })
-                .eq("id", originalMaterial.material_id)
+      // Process all material IDs (both original and new)
+      const allMaterialIds = new Set([...originalMaterialsMap.keys(), ...newMaterialsMap.keys()])
 
-              // Record restoration transaction
-              await addMaterialTransaction({
-                material_id: originalMaterial.material_id,
-                transaction_type: "returned",
-                quantity: originalMaterial.quantity,
-                previous_stock: currentMaterial.current_stock,
-                new_stock: restoredStock,
-                reference_type: "daily_log_edit",
-                reference_id: id,
-                notes: `Stock restored from edited daily log`,
-                created_by: "admin@company.com",
-              })
-            }
-          } catch (error) {
-            console.error("Error restoring material stock:", error)
-          }
+      for (const materialId of allMaterialIds) {
+        const originalQty = originalMaterialsMap.get(materialId) || 0
+        const newQty = newMaterialsMap.get(materialId) || 0
+
+        // Skip if no change
+        if (originalQty === newQty) continue
+
+        // Calculate the net change
+        const netChange = newQty - originalQty
+        console.log(`Material ${materialId}: Original=${originalQty}, New=${newQty}, Net Change=${netChange}`)
+
+        // Get current stock
+        const { data: currentMaterial } = await supabase
+          .from("materials")
+          .select("current_stock, name, unit")
+          .eq("id", materialId)
+          .single()
+
+        if (!currentMaterial) {
+          console.error(`Material ${materialId} not found`)
+          continue
         }
-      }
 
-      // Then, deduct stock for newly used materials
-      for (const newMaterial of updates.materials_used) {
-        try {
-          const { data: currentMaterial } = await supabase
-            .from("materials")
-            .select("current_stock")
-            .eq("id", newMaterial.material_id)
-            .single()
+        // Update stock based on net change
+        const newStock = Math.max(0, currentMaterial.current_stock - netChange)
+        console.log(`Updating stock for ${materialId}: ${currentMaterial.current_stock} -> ${newStock}`)
 
-          if (currentMaterial) {
-            const newStock = Math.max(0, currentMaterial.current_stock - newMaterial.quantity)
-            console.log(
-              `Deducting stock for ${newMaterial.material_id}: ${currentMaterial.current_stock} - ${newMaterial.quantity} = ${newStock}`,
-            )
+        // Update material stock
+        const { error: updateError } = await supabase
+          .from("materials")
+          .update({ current_stock: newStock })
+          .eq("id", materialId)
 
-            await supabase.from("materials").update({ current_stock: newStock }).eq("id", newMaterial.material_id)
-
-            // Record usage transaction
-            await addMaterialTransaction({
-              material_id: newMaterial.material_id,
-              transaction_type: "used",
-              quantity: newMaterial.quantity,
-              previous_stock: currentMaterial.current_stock,
-              new_stock: newStock,
-              reference_type: "daily_log_edit",
-              reference_id: id,
-              notes: `Used in edited daily log`,
-              created_by: "admin@company.com",
-            })
-          }
-        } catch (error) {
-          console.error("Error deducting material stock:", error)
+        if (updateError) {
+          console.error("Error updating material stock:", updateError)
+          continue
         }
+
+        // Record transaction
+        const transactionType = netChange > 0 ? "used" : "returned"
+        const quantity = Math.abs(netChange)
+
+        await addMaterialTransaction({
+          material_id: materialId,
+          transaction_type: transactionType,
+          quantity: quantity,
+          previous_stock: currentMaterial.current_stock,
+          new_stock: newStock,
+          reference_type: "daily_log_edit",
+          reference_id: id,
+          project: `Project: ${projectName}`,
+          notes: `${transactionType === "used" ? "Additional material used" : "Material returned"} in edited daily log`,
+          created_by: "admin@company.com",
+        })
+
+        console.log(`Successfully updated stock for ${materialId}`)
       }
     }
 
@@ -1184,11 +1316,7 @@ export async function getMaterialLocations(): Promise<MaterialLocation[]> {
   }
 }
 
-export async function addMaterialLocation(
-  name: string,
-  description?: string,
-  address?: string,
-): Promise<MaterialLocation | null> {
+export async function addMaterialLocation(name: string, description?: string): Promise<MaterialLocation | null> {
   try {
     const supabase = createClientClient()
     if (!supabase) {
@@ -1196,11 +1324,11 @@ export async function addMaterialLocation(
       return null
     }
 
-    const { data, error } = await supabase
-      .from("material_locations")
-      .insert([{ name, description, address }])
-      .select()
-      .single()
+    // Build insert object with only valid columns
+    const insertObj: { name: string; description?: string } = { name }
+    if (description) insertObj.description = description
+
+    const { data, error } = await supabase.from("material_locations").insert([insertObj]).select().single()
 
     if (error) {
       console.error("Error adding material location:", error)

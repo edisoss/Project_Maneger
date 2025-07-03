@@ -29,8 +29,21 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Separator } from "@/components/ui/separator"
-import { Plus, Edit, Trash2, Eye, FileText, Calendar, Users, Package, Cloud, MapPin, Download, Loader2, X, Clock } from 'lucide-react'
+import {
+  Plus,
+  Edit,
+  Trash2,
+  Eye,
+  FileText,
+  Calendar,
+  Users,
+  Package,
+  MapPin,
+  Download,
+  Loader2,
+  X,
+  Clock,
+} from "lucide-react"
 import { addDailyLog, updateDailyLog, deleteDailyLog } from "@/lib/database"
 import type { DailyLog, Project, Worker, Material } from "@/lib/database"
 import { useToast } from "@/hooks/use-toast"
@@ -42,6 +55,7 @@ interface DailyLogsTabProps {
   projects: Project[]
   workers: Worker[]
   materials: Material[]
+  reloadMaterials?: () => Promise<void>
   logActivity: (activity: Omit<Activity, "id" | "timestamp">) => void
 }
 
@@ -51,6 +65,7 @@ export default function DailyLogsTab({
   projects = [],
   workers = [],
   materials = [],
+  reloadMaterials,
   logActivity,
 }: DailyLogsTabProps) {
   const [showAddDialog, setShowAddDialog] = useState(false)
@@ -126,6 +141,11 @@ export default function DailyLogsTab({
       setShowAddDialog(false)
       resetForm()
       toast({ title: "Success", description: "Daily log added successfully!" })
+
+      // Reload materials to update stock display on overview
+      if (reloadMaterials) {
+        await reloadMaterials()
+      }
     } catch (error) {
       console.error("Error adding daily log:", error)
       toast({ title: "Error", description: "Error adding daily log.", variant: "destructive" })
@@ -145,7 +165,8 @@ export default function DailyLogsTab({
       hours_worked: log.hours_worked || 8,
       workers_present: log.workers_present || [],
       materials_used: log.materials_used || [],
-      notes: log.notes,
+      // Ensure Textarea gets a string, not null
+      notes: log.notes || "",
       weather: log.weather,
       status: log.status,
     })
@@ -180,6 +201,11 @@ export default function DailyLogsTab({
       setSelectedLog(null)
       resetForm()
       toast({ title: "Success", description: "Daily log updated successfully!" })
+
+      // Reload materials to update stock display on overview
+      if (reloadMaterials) {
+        await reloadMaterials()
+      }
     } catch (error) {
       console.error("Error updating daily log:", error)
       toast({ title: "Error", description: "Error updating daily log.", variant: "destructive" })
@@ -215,6 +241,11 @@ export default function DailyLogsTab({
       setShowDeleteDialog(false)
       setSelectedLog(null)
       toast({ title: "Success", description: "Daily log deleted successfully!" })
+
+      // Reload materials to update stock display on overview
+      if (reloadMaterials) {
+        await reloadMaterials()
+      }
     } catch (error) {
       console.error("Error deleting daily log:", error)
       toast({ title: "Error", description: "Error deleting daily log.", variant: "destructive" })
@@ -319,9 +350,8 @@ export default function DailyLogsTab({
     if (!printWindow) return
 
     const project = projects.find((p) => p.id === log.project_id)
-    const materialsUsedText = log.materials_used
-      ?.map((m) => `${m.material_name}: ${m.quantity} ${m.unit}`)
-      .join(", ") || "None"
+    const materialsUsedText =
+      log.materials_used?.map((m) => `${m.material_name}: ${m.quantity} ${m.unit}`).join(", ") || "None"
 
     printWindow.document.write(`
       <html>
@@ -458,7 +488,7 @@ export default function DailyLogsTab({
                   <Label htmlFor="project">Project *</Label>
                   <Select
                     value={formData.project_id.toString()}
-                    onValueChange={(value) => setFormData((prev) => ({ ...prev, project_id: parseInt(value) }))}
+                    onValueChange={(value) => setFormData((prev) => ({ ...prev, project_id: Number.parseInt(value) }))}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select project" />
@@ -504,7 +534,9 @@ export default function DailyLogsTab({
                     max="24"
                     step="0.5"
                     value={formData.hours_worked}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, hours_worked: parseFloat(e.target.value) || 0 }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, hours_worked: Number.parseFloat(e.target.value) || 0 }))
+                    }
                   />
                 </div>
                 <div>
@@ -568,7 +600,7 @@ export default function DailyLogsTab({
               <div>
                 <Label>Materials Used</Label>
                 <div className="space-y-2">
-                  <Select onValueChange={(value) => handleMaterialAdd(parseInt(value))}>
+                  <Select onValueChange={(value) => handleMaterialAdd(Number.parseInt(value))}>
                     <SelectTrigger>
                       <SelectValue placeholder="Add material" />
                     </SelectTrigger>
@@ -594,7 +626,7 @@ export default function DailyLogsTab({
                             step="0.1"
                             value={material.quantity}
                             onChange={(e) =>
-                              handleMaterialQuantityChange(material.material_id, parseFloat(e.target.value) || 0)
+                              handleMaterialQuantityChange(material.material_id, Number.parseFloat(e.target.value) || 0)
                             }
                             className="w-20"
                           />
@@ -905,7 +937,7 @@ export default function DailyLogsTab({
                 <Label htmlFor="edit-project">Project *</Label>
                 <Select
                   value={formData.project_id.toString()}
-                  onValueChange={(value) => setFormData((prev) => ({ ...prev, project_id: parseInt(value) }))}
+                  onValueChange={(value) => setFormData((prev) => ({ ...prev, project_id: Number.parseInt(value) }))}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select project" />
@@ -951,7 +983,9 @@ export default function DailyLogsTab({
                   max="24"
                   step="0.5"
                   value={formData.hours_worked}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, hours_worked: parseFloat(e.target.value) || 0 }))}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, hours_worked: Number.parseFloat(e.target.value) || 0 }))
+                  }
                 />
               </div>
               <div>
@@ -1015,7 +1049,7 @@ export default function DailyLogsTab({
             <div>
               <Label>Materials Used</Label>
               <div className="space-y-2">
-                <Select onValueChange={(value) => handleMaterialAdd(parseInt(value))}>
+                <Select onValueChange={(value) => handleMaterialAdd(Number.parseInt(value))}>
                   <SelectTrigger>
                     <SelectValue placeholder="Add material" />
                   </SelectTrigger>
@@ -1041,16 +1075,12 @@ export default function DailyLogsTab({
                           step="0.1"
                           value={material.quantity}
                           onChange={(e) =>
-                            handleMaterialQuantityChange(material.material_id, parseFloat(e.target.value) || 0)
+                            handleMaterialQuantityChange(material.material_id, Number.parseFloat(e.target.value) || 0)
                           }
                           className="w-20"
                         />
                         <span className="text-sm text-gray-500">{material.unit}</span>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleMaterialRemove(material.material_id)}
-                        >
+                        <Button variant="outline" size="sm" onClick={() => handleMaterialRemove(material.material_id)}>
                           <X className="h-3 w-3" />
                         </Button>
                       </div>

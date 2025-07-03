@@ -44,7 +44,6 @@ import {
   FileText,
   Settings,
   LogOut,
-  AlertTriangle,
   Shield,
   ActivityIcon,
   BarChart3,
@@ -68,6 +67,8 @@ import {
   addProfile,
   updateProfile,
   deleteProfile,
+  getActivities,
+  addActivity,
 } from "@/lib/database"
 import type {
   Project,
@@ -79,6 +80,7 @@ import type {
   MaterialCategory,
   MaterialLocation,
   Profile,
+  Activity,
 } from "@/lib/database"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
@@ -90,7 +92,6 @@ import WorkersTab from "./workers-tab"
 import MaterialsTab from "./materials-tab"
 import DailyLogsTab from "./daily-logs-tab"
 import RecentActivities from "./recent-activities"
-import type { Activity as ActivityType } from "./recent-activities"
 
 interface DashboardContentProps {
   user: User
@@ -107,7 +108,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
   const [materialCategories, setMaterialCategories] = useState<MaterialCategory[]>([])
   const [materialLocations, setMaterialLocations] = useState<MaterialLocation[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
-  const [activities, setActivities] = useState<ActivityType[]>([])
+  const [activities, setActivities] = useState<Activity[]>([])
   const [loading, setLoading] = useState(true)
   const [isAdmin, setIsAdmin] = useState(true) // Default to true for first user
 
@@ -155,6 +156,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
         categoriesData,
         locationsData,
         profilesData,
+        activitiesData,
       ] = await Promise.all([
         getProjects(),
         getWorkers(),
@@ -165,6 +167,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
         getMaterialCategories(),
         getMaterialLocations(),
         getProfiles(),
+        getActivities(),
       ])
 
       console.log("Data loaded:", {
@@ -177,6 +180,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
         categories: categoriesData.length,
         locations: locationsData.length,
         profiles: profilesData.length,
+        activities: activitiesData.length,
       })
 
       setProjects(projectsData)
@@ -188,9 +192,21 @@ export default function DashboardContent({ user }: DashboardContentProps) {
       setMaterialCategories(categoriesData)
       setMaterialLocations(locationsData)
       setProfiles(profilesData)
+      setActivities(activitiesData)
 
-      // Generate activities from loaded data with real timestamps
-      generateActivitiesFromData(projectsData, workersData, materialsData, dailyLogsData, profilesData)
+      // Add low stock alerts to activities if any
+      const lowStockMaterials = materialsData.filter((m) => m.current_stock <= m.min_stock)
+      if (lowStockMaterials.length > 0) {
+        for (const material of lowStockMaterials.slice(0, 3)) {
+          await logActivity({
+            type: "material",
+            title: "Low Stock Alert",
+            description: `${material.name} is running low (${material.current_stock} ${material.unit} remaining)`,
+            icon: "AlertTriangle",
+            variant: "destructive",
+          })
+        }
+      }
     } catch (error) {
       console.error("Error loading data:", error)
       toast({
@@ -203,110 +219,56 @@ export default function DashboardContent({ user }: DashboardContentProps) {
     }
   }
 
-  const generateActivitiesFromData = (
-    projectsData: Project[],
-    workersData: Worker[],
-    materialsData: Material[],
-    dailyLogsData: DailyLog[],
-    profilesData: Profile[],
-  ) => {
-    const newActivities: any[] = []
-
-    // Add recent projects (using actual created_at timestamps)
-    projectsData
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-      .slice(0, 3)
-      .forEach((project) => {
-        newActivities.push({
-          id: `project-${project.id}`,
-          type: "project",
-          title: "Project Created",
-          description: `${project.name} project was created`,
-          timestamp: project.created_at,
-          icon: Building2,
-          variant: "default",
-        })
-      })
-
-    // Add recent workers (using actual created_at timestamps)
-    workersData
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-      .slice(0, 3)
-      .forEach((worker) => {
-        newActivities.push({
-          id: `worker-${worker.id}`,
-          type: "worker",
-          title: "Worker Added",
-          description: `${worker.name} joined as ${worker.role}`,
-          timestamp: worker.created_at,
-          icon: Users,
-          variant: "default",
-        })
-      })
-
-    // Add recent profiles (using actual created_at timestamps)
-    profilesData
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-      .slice(0, 2)
-      .forEach((profile) => {
-        newActivities.push({
-          id: `profile-${profile.id}`,
-          type: "user",
-          title: "User Created",
-          description: `${profile.full_name} was added to the system`,
-          timestamp: profile.created_at,
-          icon: UserPlus,
-          variant: "default",
-        })
-      })
-
-    // Add material alerts for low stock (using current timestamp)
-    materialsData
-      .filter((material) => material.current_stock <= material.min_stock)
-      .slice(0, 3)
-      .forEach((material) => {
-        newActivities.push({
-          id: `material-alert-${material.id}`,
-          type: "material",
-          title: "Low Stock Alert",
-          description: `${material.name} is running low (${material.current_stock} ${material.unit} remaining)`,
-          timestamp: new Date().toISOString(), // Current time for alerts
-          icon: AlertTriangle,
-          variant: "destructive",
-        })
-      })
-
-    // Add recent daily logs (using actual created_at timestamps)
-    dailyLogsData
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-      .slice(0, 3)
-      .forEach((log) => {
-        newActivities.push({
-          id: `log-${log.id}`,
-          type: "daily_log",
-          title: "Daily Log Submitted",
-          description: `${log.title} - ${log.status}`,
-          timestamp: log.created_at,
-          icon: FileText,
-          variant: "secondary",
-        })
-      })
-
-    // Sort all activities by timestamp (most recent first) and limit to 10
-    const sortedActivities = newActivities
-      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-      .slice(0, 10)
-
-    setActivities(sortedActivities)
+  const reloadMaterials = async () => {
+    try {
+      console.log("Reloading materials data...")
+      const materialsData = await getMaterials()
+      setMaterials(materialsData)
+      console.log("Materials reloaded successfully:", materialsData.length)
+    } catch (error) {
+      console.error("Error reloading materials:", error)
+    }
   }
 
-  const logActivity = (activity: any) => {
-    const newActivity: any = {
-      ...activity,
-      id: `activity-${Date.now()}`,
-      timestamp: new Date().toISOString(),
+  const reloadActivities = async () => {
+    try {
+      console.log("Reloading activities data...")
+      const activitiesData = await getActivities()
+      setActivities(activitiesData)
+      console.log("Activities reloaded successfully:", activitiesData.length)
+    } catch (error) {
+      console.error("Error reloading activities:", error)
     }
-    setActivities((prev) => [newActivity, ...prev.slice(0, 9)]) // Keep only 10 most recent
+  }
+
+  const logActivity = async (activity: {
+    type: "project" | "worker" | "material" | "daily_log" | "user" | "system"
+    title: string
+    description: string
+    icon: string
+    variant?: "default" | "secondary" | "destructive" | "outline"
+    reference_type?: string
+    reference_id?: string
+  }) => {
+    try {
+      console.log("Logging activity:", activity)
+
+      // Save to database
+      const savedActivity = await addActivity({
+        ...activity,
+        created_by: user.email || "system",
+      })
+
+      if (savedActivity) {
+        // Update local state immediately for better UX
+        setActivities((prev) => [savedActivity, ...prev.slice(0, 19)]) // Keep only 20 most recent
+        console.log("Activity logged successfully:", savedActivity.id)
+      } else {
+        console.error("Failed to save activity to database")
+      }
+    } catch (error) {
+      console.error("Error logging activity:", error)
+    }
   }
 
   const handleSignOut = async () => {
@@ -339,13 +301,15 @@ export default function DashboardContent({ user }: DashboardContentProps) {
         setNewUserData({ email: "", full_name: "", role: "user", password: "" })
         toast({ title: "Success", description: "User created successfully!" })
 
-        // Add real-time activity
-        logActivity({
+        // Log activity to database
+        await logActivity({
           type: "user",
           title: "User Created",
           description: `New user ${newUserData.full_name} was created`,
-          icon: UserPlus,
+          icon: "UserPlus",
           variant: "default",
+          reference_type: "profile",
+          reference_id: newProfile.id,
         })
       }
     } catch (error) {
@@ -391,13 +355,15 @@ export default function DashboardContent({ user }: DashboardContentProps) {
         setSelectedUser(null)
         toast({ title: "Success", description: "User updated successfully!" })
 
-        // Add real-time activity
-        logActivity({
+        // Log activity to database
+        await logActivity({
           type: "user",
           title: "User Updated",
           description: `User ${editUserData.full_name} was updated`,
-          icon: Edit,
+          icon: "Edit",
           variant: "default",
+          reference_type: "profile",
+          reference_id: updatedProfile.id,
         })
       }
     } catch (error) {
@@ -423,17 +389,20 @@ export default function DashboardContent({ user }: DashboardContentProps) {
       if (success) {
         setProfiles(profiles.filter((p) => p.id !== selectedUser.id))
         setShowDeleteUserDialog(false)
-        setSelectedUser(null)
-        toast({ title: "Success", description: "User deleted successfully!" })
 
-        // Add real-time activity
-        logActivity({
+        // Log activity to database
+        await logActivity({
           type: "user",
           title: "User Deleted",
           description: `User ${selectedUser.full_name} was deleted`,
-          icon: Trash2,
+          icon: "Trash2",
           variant: "destructive",
+          reference_type: "profile",
+          reference_id: selectedUser.id,
         })
+
+        setSelectedUser(null)
+        toast({ title: "Success", description: "User deleted successfully!" })
       }
     } catch (error) {
       console.error("Error deleting user:", error)
@@ -908,6 +877,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
               projects={projects}
               workers={workers}
               materials={materials}
+              reloadMaterials={reloadMaterials}
               logActivity={logActivity}
             />
           </TabsContent>

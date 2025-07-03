@@ -34,11 +34,19 @@ export async function PUT(request: NextRequest) {
       authUpdateData.password = password
     }
 
+    // --- Update auth user (if they exist in the auth.users table) ---
     const { error: authError } = await supabase.auth.admin.updateUserById(id, authUpdateData)
 
     if (authError) {
-      console.error("Auth error:", authError)
-      return NextResponse.json({ error: `Failed to update auth user: ${authError.message}` }, { status: 500 })
+      // If the user is not found in the auth.users table we **ignore** the error
+      // so that we can still update the row in the public.profiles table.
+      // For any other error we bail out with a 500.
+      if (!/user not found/i.test(authError.message)) {
+        console.error("Auth error:", authError)
+        return NextResponse.json({ error: `Failed to update auth user: ${authError.message}` }, { status: 500 })
+      } else {
+        console.warn(`Auth user ${id} not found – skipping auth update and continuing with profile update`)
+      }
     }
 
     // Update profile data

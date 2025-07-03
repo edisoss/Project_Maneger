@@ -129,14 +129,24 @@ export default function MaterialsTab({
       setMaterialCategories(categoriesData)
       setMaterialLocations(locationsData)
 
-      // If no categories exist, add some default ones
+      // If no categories exist, show a helpful message
       if (categoriesData.length === 0) {
-        console.log("No categories found, you may need to add some default categories")
+        console.log("No categories found - you may need to run the SQL script to create default categories")
+        toast({
+          title: "No Categories Found",
+          description: "Please run the SQL script to create default material categories.",
+          variant: "destructive",
+        })
       }
 
-      // If no locations exist, add some default ones
+      // If no locations exist, show a helpful message
       if (locationsData.length === 0) {
-        console.log("No locations found, you may need to add some default locations")
+        console.log("No locations found - you may need to run the SQL script to create default locations")
+        toast({
+          title: "No Locations Found",
+          description: "Please run the SQL script to create default material locations.",
+          variant: "destructive",
+        })
       }
     } catch (error) {
       console.error("Error loading categories and locations:", error)
@@ -184,10 +194,12 @@ export default function MaterialsTab({
         return
       }
 
+      // Log activity immediately after successful creation
+      console.log("Logging activity for new material:", newMaterial.name)
       logActivity({
         type: "material",
         title: "Material Added",
-        description: `New material "${newMaterial.name}" was added to inventory.`,
+        description: `New material "${newMaterial.name}" was added to inventory with ${newMaterial.current_stock} ${newMaterial.unit}.`,
         icon: Plus,
         variant: "default",
       })
@@ -237,10 +249,12 @@ export default function MaterialsTab({
         return
       }
 
+      // Log activity immediately after successful update
+      console.log("Logging activity for updated material:", updatedMaterial.name)
       logActivity({
         type: "material",
         title: "Material Updated",
-        description: `Material "${updatedMaterial.name}" was updated.`,
+        description: `Material "${updatedMaterial.name}" was updated. Current stock: ${updatedMaterial.current_stock} ${updatedMaterial.unit}.`,
         icon: Edit,
         variant: "secondary",
       })
@@ -275,10 +289,12 @@ export default function MaterialsTab({
         return
       }
 
+      // Log activity immediately after successful deletion
+      console.log("Logging activity for deleted material:", selectedMaterial.name)
       logActivity({
         type: "material",
         title: "Material Deleted",
-        description: `Material "${selectedMaterial.name}" was deleted from inventory.`,
+        description: `Material "${selectedMaterial.name}" was permanently deleted from inventory.`,
         icon: Trash2,
         variant: "destructive",
       })
@@ -318,15 +334,30 @@ export default function MaterialsTab({
     }
 
     try {
+      console.log("Adding new category:", newCategoryName.trim())
       const newCategory = await addMaterialCategory(newCategoryName.trim())
       if (newCategory) {
+        console.log("Category added successfully:", newCategory)
         setMaterialCategories([...materialCategories, newCategory])
         setNewCategoryName("")
         toast({ title: "Success", description: "Category added successfully!" })
+
+        // Log activity for category creation
+        logActivity({
+          type: "material",
+          title: "Category Added",
+          description: `New material category "${newCategory.name}" was created.`,
+          icon: Plus,
+          variant: "default",
+        })
       }
     } catch (error) {
       console.error("Error adding category:", error)
-      toast({ title: "Error", description: "Failed to add category", variant: "destructive" })
+      toast({
+        title: "Error",
+        description: `Failed to add category: ${error instanceof Error ? error.message : "Unknown error"}`,
+        variant: "destructive",
+      })
     }
   }
 
@@ -337,23 +368,39 @@ export default function MaterialsTab({
     }
 
     try {
+      console.log("Adding new location:", newLocationName.trim())
       const newLocation = await addMaterialLocation(newLocationName.trim())
       if (newLocation) {
+        console.log("Location added successfully:", newLocation)
         setMaterialLocations([...materialLocations, newLocation])
         setNewLocationName("")
         toast({ title: "Success", description: "Location added successfully!" })
+
+        // Log activity for location creation
+        logActivity({
+          type: "material",
+          title: "Location Added",
+          description: `New material location "${newLocation.name}" was created.`,
+          icon: Plus,
+          variant: "default",
+        })
       }
     } catch (error) {
       console.error("Error adding location:", error)
-      toast({ title: "Error", description: "Failed to add location", variant: "destructive" })
+      toast({
+        title: "Error",
+        description: `Failed to add location: ${error instanceof Error ? error.message : "Unknown error"}`,
+        variant: "destructive",
+      })
     }
   }
 
-  const handleDeleteCategory = async (categoryId: number) => {
+  const handleDeleteCategory = async (categoryId: string) => {
     // Check if category is in use
-    const isInUse = materials.some(
-      (material) => material.category === materialCategories.find((c) => c.id === categoryId)?.name,
-    )
+    const categoryToDelete = materialCategories.find((c) => c.id === categoryId)
+    if (!categoryToDelete) return
+
+    const isInUse = materials.some((material) => material.category === categoryToDelete.name)
     if (isInUse) {
       toast({
         title: "Error",
@@ -368,6 +415,15 @@ export default function MaterialsTab({
       if (success) {
         setMaterialCategories(materialCategories.filter((cat) => cat.id !== categoryId))
         toast({ title: "Success", description: "Category deleted successfully!" })
+
+        // Log activity for category deletion
+        logActivity({
+          type: "material",
+          title: "Category Deleted",
+          description: `Material category "${categoryToDelete.name}" was deleted.`,
+          icon: Trash2,
+          variant: "destructive",
+        })
       }
     } catch (error) {
       console.error("Error deleting category:", error)
@@ -375,11 +431,12 @@ export default function MaterialsTab({
     }
   }
 
-  const handleDeleteLocation = async (locationId: number) => {
+  const handleDeleteLocation = async (locationId: string) => {
     // Check if location is in use
-    const isInUse = materials.some(
-      (material) => material.location === materialLocations.find((l) => l.id === locationId)?.name,
-    )
+    const locationToDelete = materialLocations.find((l) => l.id === locationId)
+    if (!locationToDelete) return
+
+    const isInUse = materials.some((material) => material.location === locationToDelete.name)
     if (isInUse) {
       toast({
         title: "Error",
@@ -394,6 +451,15 @@ export default function MaterialsTab({
       if (success) {
         setMaterialLocations(materialLocations.filter((loc) => loc.id !== locationId))
         toast({ title: "Success", description: "Location deleted successfully!" })
+
+        // Log activity for location deletion
+        logActivity({
+          type: "material",
+          title: "Location Deleted",
+          description: `Material location "${locationToDelete.name}" was deleted.`,
+          icon: Trash2,
+          variant: "destructive",
+        })
       }
     } catch (error) {
       console.error("Error deleting location:", error)

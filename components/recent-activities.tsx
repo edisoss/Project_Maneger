@@ -1,17 +1,19 @@
 "use client"
 
 import { Badge } from "@/components/ui/badge"
-import { Clock } from "lucide-react"
-
-export interface Activity {
-  id: string
-  type: "project" | "worker" | "material" | "daily_log" | "user"
-  title: string
-  description: string
-  timestamp: string
-  icon: any
-  variant: "default" | "secondary" | "destructive" | "outline"
-}
+import {
+  Clock,
+  Building2,
+  Users,
+  Package,
+  FileText,
+  UserPlus,
+  AlertTriangle,
+  Edit,
+  Trash2,
+  Settings,
+} from "lucide-react"
+import type { Activity } from "@/lib/database"
 
 interface RecentActivitiesProps {
   activities?: Activity[]
@@ -29,8 +31,21 @@ export default function RecentActivities({ activities = [] }: RecentActivitiesPr
     return `${Math.floor(diffInMinutes / 1440)}d ago`
   }
 
-  const getActivityIcon = (activity: Activity) => {
-    const IconComponent = activity.icon
+  const getActivityIcon = (iconName: string) => {
+    const iconMap = {
+      Building2,
+      Users,
+      Package,
+      FileText,
+      UserPlus,
+      AlertTriangle,
+      Edit,
+      Trash2,
+      Settings,
+      Clock,
+    }
+
+    const IconComponent = iconMap[iconName as keyof typeof iconMap] || Clock
     return <IconComponent className="h-4 w-4" />
   }
 
@@ -66,6 +81,12 @@ export default function RecentActivities({ activities = [] }: RecentActivitiesPr
             User
           </Badge>
         )
+      case "system":
+        return (
+          <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200">
+            System
+          </Badge>
+        )
       default:
         return <Badge variant="outline">Activity</Badge>
     }
@@ -98,7 +119,7 @@ export default function RecentActivities({ activities = [] }: RecentActivitiesPr
                   : "bg-blue-100 text-blue-600"
             }`}
           >
-            {getActivityIcon(activity)}
+            {getActivityIcon(activity.icon)}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between mb-1">
@@ -106,7 +127,7 @@ export default function RecentActivities({ activities = [] }: RecentActivitiesPr
               {getActivityBadge(activity.type)}
             </div>
             <p className="text-sm text-gray-600 mb-1">{activity.description}</p>
-            <p className="text-xs text-gray-400">{getTimeAgo(activity.timestamp)}</p>
+            <p className="text-xs text-gray-400">{getTimeAgo(activity.created_at)}</p>
           </div>
         </div>
       ))}
