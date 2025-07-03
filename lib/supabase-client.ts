@@ -7,14 +7,10 @@ const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 let supabaseInstance: ReturnType<typeof createBrowserClient> | null = null
 
 export function createClientClient() {
-  // Check if we're in a browser environment
-  if (typeof window === 'undefined') {
-    return null
-  }
-
   if (!SUPABASE_URL || !SUPABASE_KEY) {
     console.warn(
-      "[Supabase] Missing environment variables. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in your .env.local file"
+      "[Supabase] Missing env vars. Authentication disabled in preview. " +
+        "Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.",
     )
     return null
   }
@@ -24,22 +20,16 @@ export function createClientClient() {
     return supabaseInstance
   }
 
-  try {
-    // Create new instance only if none exists
-    supabaseInstance = createBrowserClient(SUPABASE_URL, SUPABASE_KEY, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-        flowType: 'pkce'
-      },
-    })
+  // Create new instance only if none exists
+  supabaseInstance = createBrowserClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+  })
 
-    return supabaseInstance
-  } catch (error) {
-    console.error("[Supabase] Failed to create client:", error)
-    return null
-  }
+  return supabaseInstance
 }
 
 // Export the instance directly for consistent usage

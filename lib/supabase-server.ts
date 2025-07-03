@@ -4,40 +4,22 @@ import { cookies } from "next/headers"
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
+// When env vars are missing we return a *stub* client so the app doesn’t crash
 export function createServerClient() {
   if (!SUPABASE_URL || !SUPABASE_KEY) {
     console.warn(
-      "[Supabase] Missing environment variables. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in your .env.local file"
+      "[Supabase] Missing env vars. Authentication disabled in preview. " +
+        "Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.",
     )
     return null
   }
 
-  try {
-    const cookieStore = cookies()
-    
-    return createSupabaseServerClient(SUPABASE_URL, SUPABASE_KEY, {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-        set(name: string, value: string, options: any) {
-          try {
-            cookieStore.set({ name, value, ...options })
-          } catch (error) {
-            // Handle cookie setting errors in middleware
-          }
-        },
-        remove(name: string, options: any) {
-          try {
-            cookieStore.set({ name, value: '', ...options })
-          } catch (error) {
-            // Handle cookie removal errors in middleware
-          }
-        },
+  const cookieStore = cookies()
+  return createSupabaseServerClient(SUPABASE_URL, SUPABASE_KEY, {
+    cookies: {
+      get(name: string) {
+        return cookieStore.get(name)?.value
       },
-    })
-  } catch (error) {
-    console.error("[Supabase] Failed to create server client:", error)
-    return null
-  }
+    },
+  })
 }
