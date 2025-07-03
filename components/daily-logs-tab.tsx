@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -27,24 +28,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import {
-  Plus,
-  Edit,
-  Trash2,
-  Eye,
-  Calendar,
-  Clock,
-  Users,
-  Package,
-  FileText,
-  Download,
-  Loader2,
-  MapPin,
-  Sun,
-  Cloud,
-  CloudRain,
-  CloudSnow,
-} from "lucide-react"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Separator } from "@/components/ui/separator"
+import { Plus, Edit, Trash2, Eye, FileText, Calendar, Users, Package, Cloud, MapPin, Download, Loader2, X, Clock } from 'lucide-react'
 import { addDailyLog, updateDailyLog, deleteDailyLog } from "@/lib/database"
 import type { DailyLog, Project, Worker, Material } from "@/lib/database"
 import { useToast } from "@/hooks/use-toast"
@@ -57,13 +43,6 @@ interface DailyLogsTabProps {
   workers: Worker[]
   materials: Material[]
   logActivity: (activity: Omit<Activity, "id" | "timestamp">) => void
-}
-
-interface MaterialUsage {
-  material_id: number
-  material_name: string
-  quantity: number
-  unit: string
 }
 
 export default function DailyLogsTab({
@@ -89,13 +68,21 @@ export default function DailyLogsTab({
     project_id: 0,
     work_completed: "",
     working_place: "",
-    workers_present: [] as string[],
-    materials_used: [] as MaterialUsage[],
-    notes: "",
-    weather: "Sunny",
-    status: "In Progress",
     hours_worked: 8,
+    workers_present: [] as string[],
+    materials_used: [] as Array<{
+      material_id: number
+      material_name: string
+      quantity: number
+      unit: string
+    }>,
+    notes: "",
+    weather: "Clear",
+    status: "Completed",
   })
+
+  const weatherOptions = ["Clear", "Cloudy", "Rainy", "Stormy", "Snowy", "Foggy", "Windy"]
+  const statusOptions = ["Completed", "In Progress", "Delayed", "Cancelled"]
 
   const resetForm = () => {
     setFormData({
@@ -104,81 +91,19 @@ export default function DailyLogsTab({
       project_id: projects[0]?.id || 0,
       work_completed: "",
       working_place: "",
+      hours_worked: 8,
       workers_present: [],
       materials_used: [],
       notes: "",
-      weather: "Sunny",
-      status: "In Progress",
-      hours_worked: 8,
+      weather: "Clear",
+      status: "Completed",
     })
-  }
-
-  const handleWorkerToggle = (workerName: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      workers_present: prev.workers_present.includes(workerName)
-        ? prev.workers_present.filter((w) => w !== workerName)
-        : [...prev.workers_present, workerName],
-    }))
-  }
-
-  const handleMaterialAdd = () => {
-    if (materials.length === 0) {
-      toast({
-        title: "No Materials",
-        description: "Please add materials first before using them in logs.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    const firstMaterial = materials[0]
-    setFormData((prev) => ({
-      ...prev,
-      materials_used: [
-        ...prev.materials_used,
-        {
-          material_id: firstMaterial.id,
-          material_name: firstMaterial.name,
-          quantity: 1,
-          unit: firstMaterial.unit,
-        },
-      ],
-    }))
-  }
-
-  const handleMaterialRemove = (index: number) => {
-    setFormData((prev) => ({
-      ...prev,
-      materials_used: prev.materials_used.filter((_, i) => i !== index),
-    }))
-  }
-
-  const handleMaterialChange = (index: number, field: keyof MaterialUsage, value: any) => {
-    setFormData((prev) => ({
-      ...prev,
-      materials_used: prev.materials_used.map((material, i) => {
-        if (i === index) {
-          if (field === "material_id") {
-            const selectedMaterial = materials.find((m) => m.id === value)
-            return {
-              ...material,
-              material_id: value,
-              material_name: selectedMaterial?.name || "",
-              unit: selectedMaterial?.unit || material.unit,
-            }
-          }
-          return { ...material, [field]: value }
-        }
-        return material
-      }),
-    }))
   }
 
   const handleAddLog = async () => {
     try {
       setSaving(true)
-      if (!formData.title || !formData.project_id || !formData.work_completed) {
+      if (!formData.title || !formData.date || !formData.project_id || !formData.work_completed) {
         toast({ title: "Error", description: "Please fill in all required fields", variant: "destructive" })
         return
       }
@@ -191,7 +116,7 @@ export default function DailyLogsTab({
 
       logActivity({
         type: "daily_log",
-        title: "Daily Log Added",
+        title: "Daily Log Created",
         description: `New daily log "${newLog.title}" was created.`,
         icon: Plus,
         variant: "default",
@@ -217,12 +142,12 @@ export default function DailyLogsTab({
       project_id: log.project_id,
       work_completed: log.work_completed || "",
       working_place: log.working_place || "",
+      hours_worked: log.hours_worked || 8,
       workers_present: log.workers_present || [],
       materials_used: log.materials_used || [],
       notes: log.notes,
       weather: log.weather,
       status: log.status,
-      hours_worked: log.hours_worked || 8,
     })
     setShowEditDialog(true)
   }
@@ -231,7 +156,7 @@ export default function DailyLogsTab({
     if (!selectedLog) return
     try {
       setSaving(true)
-      if (!formData.title || !formData.project_id || !formData.work_completed) {
+      if (!formData.title || !formData.date || !formData.project_id || !formData.work_completed) {
         toast({ title: "Error", description: "Please fill in all required fields", variant: "destructive" })
         return
       }
@@ -303,13 +228,64 @@ export default function DailyLogsTab({
     setShowViewDialog(true)
   }
 
+  const handleWorkerToggle = (workerName: string, checked: boolean) => {
+    setFormData((prev) => ({
+      ...prev,
+      workers_present: checked
+        ? [...prev.workers_present, workerName]
+        : prev.workers_present.filter((w) => w !== workerName),
+    }))
+  }
+
+  const handleMaterialAdd = (materialId: number) => {
+    const material = materials.find((m) => m.id === materialId)
+    if (!material) return
+
+    const existingMaterial = formData.materials_used.find((m) => m.material_id === materialId)
+    if (existingMaterial) {
+      toast({ title: "Info", description: "Material already added", variant: "default" })
+      return
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      materials_used: [
+        ...prev.materials_used,
+        {
+          material_id: materialId,
+          material_name: material.name,
+          quantity: 1,
+          unit: material.unit,
+        },
+      ],
+    }))
+  }
+
+  const handleMaterialQuantityChange = (materialId: number, quantity: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      materials_used: prev.materials_used.map((m) =>
+        m.material_id === materialId ? { ...m, quantity: Math.max(0, quantity) } : m,
+      ),
+    }))
+  }
+
+  const handleMaterialRemove = (materialId: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      materials_used: prev.materials_used.filter((m) => m.material_id !== materialId),
+    }))
+  }
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "Completed":
         return <Badge variant="default">{status}</Badge>
       case "In Progress":
         return <Badge variant="secondary">{status}</Badge>
-      case "On Hold":
+      case "Delayed":
+        return <Badge variant="destructive">{status}</Badge>
+      case "Cancelled":
         return <Badge variant="outline">{status}</Badge>
       default:
         return <Badge variant="outline">{status}</Badge>
@@ -318,78 +294,124 @@ export default function DailyLogsTab({
 
   const getWeatherIcon = (weather: string) => {
     switch (weather) {
-      case "Sunny":
-        return <Sun className="h-4 w-4 text-yellow-500" />
+      case "Clear":
+        return "☀️"
       case "Cloudy":
-        return <Cloud className="h-4 w-4 text-gray-500" />
+        return "☁️"
       case "Rainy":
-        return <CloudRain className="h-4 w-4 text-blue-500" />
+        return "🌧️"
+      case "Stormy":
+        return "⛈️"
       case "Snowy":
-        return <CloudSnow className="h-4 w-4 text-blue-300" />
+        return "❄️"
+      case "Foggy":
+        return "🌫️"
+      case "Windy":
+        return "💨"
       default:
-        return <Sun className="h-4 w-4 text-yellow-500" />
+        return "🌤️"
     }
   }
 
   const generatePDF = (log: DailyLog) => {
-    const content = `
-DAILY WORK LOG REPORT
-=====================
+    // Simple PDF generation using browser print
+    const printWindow = window.open("", "_blank")
+    if (!printWindow) return
 
-Title: ${log.title}
-Date: ${new Date(log.date).toLocaleDateString()}
-Project: ${log.project_name || "Unknown Project"}
-Working Place: ${log.working_place || "Not specified"}
-Status: ${log.status}
-Weather: ${log.weather}
-Hours Worked: ${log.hours_worked || 0}
+    const project = projects.find((p) => p.id === log.project_id)
+    const materialsUsedText = log.materials_used
+      ?.map((m) => `${m.material_name}: ${m.quantity} ${m.unit}`)
+      .join(", ") || "None"
 
-WORK COMPLETED:
-${log.work_completed || "No work description provided"}
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Daily Log - ${log.title}</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            .header { border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
+            .section { margin-bottom: 15px; }
+            .label { font-weight: bold; }
+            .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>Daily Work Log</h1>
+            <h2>${log.title}</h2>
+          </div>
+          
+          <div class="grid">
+            <div>
+              <div class="section">
+                <span class="label">Date:</span> ${new Date(log.date).toLocaleDateString()}
+              </div>
+              <div class="section">
+                <span class="label">Project:</span> ${project?.name || "Unknown"}
+              </div>
+              <div class="section">
+                <span class="label">Working Place:</span> ${log.working_place || "Not specified"}
+              </div>
+              <div class="section">
+                <span class="label">Hours Worked:</span> ${log.hours_worked || 0} hours
+              </div>
+            </div>
+            
+            <div>
+              <div class="section">
+                <span class="label">Weather:</span> ${log.weather}
+              </div>
+              <div class="section">
+                <span class="label">Status:</span> ${log.status}
+              </div>
+              <div class="section">
+                <span class="label">Workers Present:</span> ${log.workers_present?.join(", ") || "None"}
+              </div>
+            </div>
+          </div>
+          
+          <div class="section">
+            <span class="label">Work Completed:</span>
+            <p>${log.work_completed}</p>
+          </div>
+          
+          <div class="section">
+            <span class="label">Materials Used:</span>
+            <p>${materialsUsedText}</p>
+          </div>
+          
+          <div class="section">
+            <span class="label">Notes:</span>
+            <p>${log.notes}</p>
+          </div>
+          
+          <div class="section" style="margin-top: 30px; font-size: 12px; color: #666;">
+            Generated on ${new Date().toLocaleString()}
+          </div>
+        </body>
+      </html>
+    `)
 
-WORKERS PRESENT:
-${
-  log.workers_present && log.workers_present.length > 0
-    ? log.workers_present.map((worker) => `• ${worker}`).join("\n")
-    : "No workers recorded"
-}
-
-MATERIALS USED:
-${
-  log.materials_used && log.materials_used.length > 0
-    ? log.materials_used
-        .map((material) => `• ${material.material_name}: ${material.quantity} ${material.unit}`)
-        .join("\n")
-    : "No materials used"
-}
-
-NOTES:
-${log.notes || "No additional notes"}
-
-Generated on: ${new Date().toLocaleString()}
-    `.trim()
-
-    const blob = new Blob([content], { type: "text/plain" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `daily-log-${log.title.replace(/\s+/g, "-").toLowerCase()}-${log.date}.txt`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
+    printWindow.document.close()
+    printWindow.print()
   }
 
+  // Calculate statistics
   const totalLogs = dailyLogs.length
   const completedLogs = dailyLogs.filter((log) => log.status === "Completed").length
   const inProgressLogs = dailyLogs.filter((log) => log.status === "In Progress").length
-  const onHoldLogs = dailyLogs.filter((log) => log.status === "On Hold").length
+  const thisWeekLogs = dailyLogs.filter((log) => {
+    const logDate = new Date(log.date)
+    const weekAgo = new Date()
+    weekAgo.setDate(weekAgo.getDate() - 7)
+    return logDate >= weekAgo
+  }).length
 
   return (
-    <div className="space-y-6 px-6">
+    <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold">Daily Logs</h2>
+          <h2 className="text-2xl font-bold">Daily Logs Management</h2>
           <p className="text-gray-600">Track daily work progress and activities</p>
         </div>
         <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
@@ -406,13 +428,13 @@ Generated on: ${new Date().toLocaleString()}
           </DialogTrigger>
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Add Daily Log</DialogTitle>
+              <DialogTitle>Add New Daily Log</DialogTitle>
               <DialogDescription>Record daily work activities and progress</DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="title">Title *</Label>
+                  <Label htmlFor="title">Log Title *</Label>
                   <Input
                     id="title"
                     placeholder="Enter log title"
@@ -436,7 +458,7 @@ Generated on: ${new Date().toLocaleString()}
                   <Label htmlFor="project">Project *</Label>
                   <Select
                     value={formData.project_id.toString()}
-                    onValueChange={(value) => setFormData((prev) => ({ ...prev, project_id: Number.parseInt(value) }))}
+                    onValueChange={(value) => setFormData((prev) => ({ ...prev, project_id: parseInt(value) }))}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select project" />
@@ -474,19 +496,32 @@ Generated on: ${new Date().toLocaleString()}
 
               <div className="grid grid-cols-3 gap-4">
                 <div>
+                  <Label htmlFor="hours_worked">Hours Worked</Label>
+                  <Input
+                    id="hours_worked"
+                    type="number"
+                    min="0"
+                    max="24"
+                    step="0.5"
+                    value={formData.hours_worked}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, hours_worked: parseFloat(e.target.value) || 0 }))}
+                  />
+                </div>
+                <div>
                   <Label htmlFor="weather">Weather</Label>
                   <Select
                     value={formData.weather}
                     onValueChange={(value) => setFormData((prev) => ({ ...prev, weather: value }))}
                   >
                     <SelectTrigger>
-                      <SelectValue />
+                      <SelectValue placeholder="Select weather" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Sunny">Sunny</SelectItem>
-                      <SelectItem value="Cloudy">Cloudy</SelectItem>
-                      <SelectItem value="Rainy">Rainy</SelectItem>
-                      <SelectItem value="Snowy">Snowy</SelectItem>
+                      {weatherOptions.map((weather) => (
+                        <SelectItem key={weather} value={weather}>
+                          {getWeatherIcon(weather)} {weather}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -497,99 +532,84 @@ Generated on: ${new Date().toLocaleString()}
                     onValueChange={(value) => setFormData((prev) => ({ ...prev, status: value }))}
                   >
                     <SelectTrigger>
-                      <SelectValue />
+                      <SelectValue placeholder="Select status" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="In Progress">In Progress</SelectItem>
-                      <SelectItem value="Completed">Completed</SelectItem>
-                      <SelectItem value="On Hold">On Hold</SelectItem>
+                      {statusOptions.map((status) => (
+                        <SelectItem key={status} value={status}>
+                          {status}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
-                </div>
-                <div>
-                  <Label htmlFor="hours_worked">Hours Worked</Label>
-                  <Input
-                    id="hours_worked"
-                    type="number"
-                    min="0"
-                    max="24"
-                    step="0.5"
-                    value={formData.hours_worked}
-                    onChange={(e) =>
-                      setFormData((prev) => ({ ...prev, hours_worked: Number.parseFloat(e.target.value) || 0 }))
-                    }
-                  />
                 </div>
               </div>
 
               <div>
                 <Label>Workers Present</Label>
-                <div className="grid grid-cols-3 gap-2 mt-2 max-h-32 overflow-y-auto border rounded p-2">
-                  {workers
-                    .filter((w) => w.status === "Active")
-                    .map((worker) => (
+                <ScrollArea className="h-32 border rounded-md p-3">
+                  <div className="space-y-2">
+                    {workers.map((worker) => (
                       <div key={worker.id} className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           id={`worker-${worker.id}`}
                           checked={formData.workers_present.includes(worker.name)}
-                          onChange={() => handleWorkerToggle(worker.name)}
-                          className="rounded"
+                          onCheckedChange={(checked) => handleWorkerToggle(worker.name, checked as boolean)}
                         />
                         <Label htmlFor={`worker-${worker.id}`} className="text-sm">
-                          {worker.name}
+                          {worker.name} - {worker.role}
                         </Label>
                       </div>
                     ))}
-                </div>
-                {workers.filter((w) => w.status === "Active").length === 0 && (
-                  <p className="text-sm text-gray-500 mt-2">No active workers available</p>
-                )}
+                  </div>
+                </ScrollArea>
               </div>
 
               <div>
-                <div className="flex justify-between items-center">
-                  <Label>Materials Used</Label>
-                  <Button type="button" variant="outline" size="sm" onClick={handleMaterialAdd}>
-                    <Plus className="h-3 w-3 mr-1" />
-                    Add Material
-                  </Button>
-                </div>
-                <div className="space-y-2 mt-2">
-                  {formData.materials_used.map((material, index) => (
-                    <div key={index} className="flex gap-2 items-center p-2 border rounded">
-                      <Select
-                        value={material.material_id.toString()}
-                        onValueChange={(value) => handleMaterialChange(index, "material_id", Number.parseInt(value))}
-                      >
-                        <SelectTrigger className="flex-1">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {materials.map((mat) => (
-                            <SelectItem key={mat.id} value={mat.id.toString()}>
-                              {mat.name} (Stock: {mat.current_stock} {mat.unit})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Input
-                        type="number"
-                        placeholder="Qty"
-                        value={material.quantity}
-                        onChange={(e) =>
-                          handleMaterialChange(index, "quantity", Number.parseFloat(e.target.value) || 0)
-                        }
-                        className="w-20"
-                        min="0"
-                        step="0.1"
-                      />
-                      <span className="text-sm text-gray-500 w-12">{material.unit}</span>
-                      <Button type="button" variant="outline" size="sm" onClick={() => handleMaterialRemove(index)}>
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                <Label>Materials Used</Label>
+                <div className="space-y-2">
+                  <Select onValueChange={(value) => handleMaterialAdd(parseInt(value))}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Add material" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {materials
+                        .filter((m) => !formData.materials_used.some((used) => used.material_id === m.id))
+                        .map((material) => (
+                          <SelectItem key={material.id} value={material.id.toString()}>
+                            {material.name} (Available: {material.current_stock} {material.unit})
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+
+                  {formData.materials_used.length > 0 && (
+                    <div className="border rounded-md p-3 space-y-2">
+                      {formData.materials_used.map((material) => (
+                        <div key={material.material_id} className="flex items-center gap-2">
+                          <span className="flex-1 text-sm">{material.material_name}</span>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.1"
+                            value={material.quantity}
+                            onChange={(e) =>
+                              handleMaterialQuantityChange(material.material_id, parseFloat(e.target.value) || 0)
+                            }
+                            className="w-20"
+                          />
+                          <span className="text-sm text-gray-500">{material.unit}</span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleMaterialRemove(material.material_id)}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
               </div>
 
@@ -600,7 +620,7 @@ Generated on: ${new Date().toLocaleString()}
                   placeholder="Additional notes or observations"
                   value={formData.notes}
                   onChange={(e) => setFormData((prev) => ({ ...prev, notes: e.target.value }))}
-                  rows={2}
+                  rows={3}
                 />
               </div>
             </div>
@@ -632,7 +652,7 @@ Generated on: ${new Date().toLocaleString()}
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalLogs}</div>
-            <p className="text-xs text-muted-foreground">Daily entries</p>
+            <p className="text-xs text-muted-foreground">All time logs</p>
           </CardContent>
         </Card>
         <Card>
@@ -657,12 +677,12 @@ Generated on: ${new Date().toLocaleString()}
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">On Hold</CardTitle>
-            <Users className="h-4 w-4 text-yellow-500" />
+            <CardTitle className="text-sm font-medium">This Week</CardTitle>
+            <Calendar className="h-4 w-4 text-purple-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-yellow-600">{onHoldLogs}</div>
-            <p className="text-xs text-muted-foreground">Paused work</p>
+            <div className="text-2xl font-bold text-purple-600">{thisWeekLogs}</div>
+            <p className="text-xs text-muted-foreground">Recent logs</p>
           </CardContent>
         </Card>
       </div>
@@ -671,7 +691,7 @@ Generated on: ${new Date().toLocaleString()}
       <Card>
         <CardHeader>
           <CardTitle>Daily Work Logs</CardTitle>
-          <CardDescription>Track and manage daily work activities</CardDescription>
+          <CardDescription>Track daily work progress and activities</CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
@@ -683,7 +703,6 @@ Generated on: ${new Date().toLocaleString()}
                 <TableHead>Working Place</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Weather</TableHead>
-                <TableHead>Hours</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -692,35 +711,42 @@ Generated on: ${new Date().toLocaleString()}
                 <TableRow key={log.id}>
                   <TableCell>
                     <div className="font-medium">{log.title}</div>
+                    <div className="text-sm text-gray-500 truncate max-w-xs">
+                      {log.work_completed?.substring(0, 50)}...
+                    </div>
                   </TableCell>
-                  <TableCell>{new Date(log.date).toLocaleDateString()}</TableCell>
                   <TableCell>
-                    <Badge variant="outline">{log.project_name || "Unknown Project"}</Badge>
+                    <div className="flex items-center">
+                      <Calendar className="h-4 w-4 mr-2 text-gray-400" />
+                      {new Date(log.date).toLocaleDateString()}
+                    </div>
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-1">
-                      <MapPin className="h-3 w-3 text-gray-500" />
-                      <span className="text-sm">{log.working_place || "Not specified"}</span>
+                    <Badge variant="outline">{log.project_name || "Unknown"}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center">
+                      <MapPin className="h-4 w-4 mr-2 text-gray-400" />
+                      {log.working_place || "Not specified"}
                     </div>
                   </TableCell>
                   <TableCell>{getStatusBadge(log.status)}</TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-1">
-                      {getWeatherIcon(log.weather)}
-                      <span className="text-sm">{log.weather}</span>
+                    <div className="flex items-center">
+                      <span className="mr-2">{getWeatherIcon(log.weather)}</span>
+                      {log.weather}
                     </div>
                   </TableCell>
-                  <TableCell>{log.hours_worked || 0}h</TableCell>
                   <TableCell>
-                    <div className="flex space-x-1">
+                    <div className="flex space-x-2">
                       <Button variant="outline" size="sm" onClick={() => handleView(log)}>
                         <Eye className="h-3 w-3" />
                       </Button>
-                      <Button variant="outline" size="sm" onClick={() => handleEdit(log)}>
-                        <Edit className="h-3 w-3" />
-                      </Button>
                       <Button variant="outline" size="sm" onClick={() => generatePDF(log)}>
                         <Download className="h-3 w-3" />
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => handleEdit(log)}>
+                        <Edit className="h-3 w-3" />
                       </Button>
                       <Button variant="outline" size="sm" onClick={() => handleDelete(log)}>
                         <Trash2 className="h-3 w-3" />
@@ -739,7 +765,113 @@ Generated on: ${new Date().toLocaleString()}
         </CardContent>
       </Card>
 
-      {/* Edit Dialog */}
+      {/* View Dialog */}
+      <Dialog open={showViewDialog} onOpenChange={setShowViewDialog}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{selectedLog?.title}</DialogTitle>
+            <DialogDescription>Daily log details</DialogDescription>
+          </DialogHeader>
+          {selectedLog && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm font-medium">Date</Label>
+                  <p className="flex items-center">
+                    <Calendar className="h-4 w-4 mr-2 text-gray-400" />
+                    {new Date(selectedLog.date).toLocaleDateString()}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Project</Label>
+                  <p>{selectedLog.project_name || "Unknown"}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm font-medium">Working Place</Label>
+                  <p className="flex items-center">
+                    <MapPin className="h-4 w-4 mr-2 text-gray-400" />
+                    {selectedLog.working_place || "Not specified"}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Hours Worked</Label>
+                  <p>{selectedLog.hours_worked || 0} hours</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm font-medium">Weather</Label>
+                  <p className="flex items-center">
+                    <span className="mr-2">{getWeatherIcon(selectedLog.weather)}</span>
+                    {selectedLog.weather}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Status</Label>
+                  <div>{getStatusBadge(selectedLog.status)}</div>
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-sm font-medium">Work Completed</Label>
+                <p className="mt-1 p-3 bg-gray-50 rounded-md">{selectedLog.work_completed}</p>
+              </div>
+
+              <div>
+                <Label className="text-sm font-medium">Workers Present</Label>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {selectedLog.workers_present && selectedLog.workers_present.length > 0 ? (
+                    selectedLog.workers_present.map((worker, index) => (
+                      <Badge key={index} variant="secondary">
+                        <Users className="h-3 w-3 mr-1" />
+                        {worker}
+                      </Badge>
+                    ))
+                  ) : (
+                    <span className="text-gray-500">No workers recorded</span>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-sm font-medium">Materials Used</Label>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {selectedLog.materials_used && selectedLog.materials_used.length > 0 ? (
+                    selectedLog.materials_used.map((material, index) => (
+                      <Badge key={index} variant="outline">
+                        <Package className="h-3 w-3 mr-1" />
+                        {material.material_name}: {material.quantity} {material.unit}
+                      </Badge>
+                    ))
+                  ) : (
+                    <span className="text-gray-500">No materials recorded</span>
+                  )}
+                </div>
+              </div>
+
+              {selectedLog.notes && (
+                <div>
+                  <Label className="text-sm font-medium">Notes</Label>
+                  <p className="mt-1 p-3 bg-gray-50 rounded-md">{selectedLog.notes}</p>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="flex justify-end space-x-2">
+            <Button variant="outline" onClick={() => selectedLog && generatePDF(selectedLog)}>
+              <Download className="h-4 w-4 mr-2" />
+              Export PDF
+            </Button>
+            <Button onClick={() => setShowViewDialog(false)}>Close</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Dialog - Similar to Add Dialog but with pre-filled data */}
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -749,7 +881,7 @@ Generated on: ${new Date().toLocaleString()}
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="edit-title">Title *</Label>
+                <Label htmlFor="edit-title">Log Title *</Label>
                 <Input
                   id="edit-title"
                   placeholder="Enter log title"
@@ -773,7 +905,7 @@ Generated on: ${new Date().toLocaleString()}
                 <Label htmlFor="edit-project">Project *</Label>
                 <Select
                   value={formData.project_id.toString()}
-                  onValueChange={(value) => setFormData((prev) => ({ ...prev, project_id: Number.parseInt(value) }))}
+                  onValueChange={(value) => setFormData((prev) => ({ ...prev, project_id: parseInt(value) }))}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select project" />
@@ -811,19 +943,32 @@ Generated on: ${new Date().toLocaleString()}
 
             <div className="grid grid-cols-3 gap-4">
               <div>
+                <Label htmlFor="edit-hours_worked">Hours Worked</Label>
+                <Input
+                  id="edit-hours_worked"
+                  type="number"
+                  min="0"
+                  max="24"
+                  step="0.5"
+                  value={formData.hours_worked}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, hours_worked: parseFloat(e.target.value) || 0 }))}
+                />
+              </div>
+              <div>
                 <Label htmlFor="edit-weather">Weather</Label>
                 <Select
                   value={formData.weather}
                   onValueChange={(value) => setFormData((prev) => ({ ...prev, weather: value }))}
                 >
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder="Select weather" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Sunny">Sunny</SelectItem>
-                    <SelectItem value="Cloudy">Cloudy</SelectItem>
-                    <SelectItem value="Rainy">Rainy</SelectItem>
-                    <SelectItem value="Snowy">Snowy</SelectItem>
+                    {weatherOptions.map((weather) => (
+                      <SelectItem key={weather} value={weather}>
+                        {getWeatherIcon(weather)} {weather}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -834,97 +979,84 @@ Generated on: ${new Date().toLocaleString()}
                   onValueChange={(value) => setFormData((prev) => ({ ...prev, status: value }))}
                 >
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder="Select status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="In Progress">In Progress</SelectItem>
-                    <SelectItem value="Completed">Completed</SelectItem>
-                    <SelectItem value="On Hold">On Hold</SelectItem>
+                    {statusOptions.map((status) => (
+                      <SelectItem key={status} value={status}>
+                        {status}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
-              </div>
-              <div>
-                <Label htmlFor="edit-hours_worked">Hours Worked</Label>
-                <Input
-                  id="edit-hours_worked"
-                  type="number"
-                  min="0"
-                  max="24"
-                  step="0.5"
-                  value={formData.hours_worked}
-                  onChange={(e) =>
-                    setFormData((prev) => ({ ...prev, hours_worked: Number.parseFloat(e.target.value) || 0 }))
-                  }
-                />
               </div>
             </div>
 
             <div>
               <Label>Workers Present</Label>
-              <div className="grid grid-cols-3 gap-2 mt-2 max-h-32 overflow-y-auto border rounded p-2">
-                {workers
-                  .filter((w) => w.status === "Active")
-                  .map((worker) => (
+              <ScrollArea className="h-32 border rounded-md p-3">
+                <div className="space-y-2">
+                  {workers.map((worker) => (
                     <div key={worker.id} className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         id={`edit-worker-${worker.id}`}
                         checked={formData.workers_present.includes(worker.name)}
-                        onChange={() => handleWorkerToggle(worker.name)}
-                        className="rounded"
+                        onCheckedChange={(checked) => handleWorkerToggle(worker.name, checked as boolean)}
                       />
                       <Label htmlFor={`edit-worker-${worker.id}`} className="text-sm">
-                        {worker.name}
+                        {worker.name} - {worker.role}
                       </Label>
                     </div>
                   ))}
-              </div>
-              {workers.filter((w) => w.status === "Active").length === 0 && (
-                <p className="text-sm text-gray-500 mt-2">No active workers available</p>
-              )}
+                </div>
+              </ScrollArea>
             </div>
 
             <div>
-              <div className="flex justify-between items-center">
-                <Label>Materials Used</Label>
-                <Button type="button" variant="outline" size="sm" onClick={handleMaterialAdd}>
-                  <Plus className="h-3 w-3 mr-1" />
-                  Add Material
-                </Button>
-              </div>
-              <div className="space-y-2 mt-2">
-                {formData.materials_used.map((material, index) => (
-                  <div key={index} className="flex gap-2 items-center p-2 border rounded">
-                    <Select
-                      value={material.material_id.toString()}
-                      onValueChange={(value) => handleMaterialChange(index, "material_id", Number.parseInt(value))}
-                    >
-                      <SelectTrigger className="flex-1">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {materials.map((mat) => (
-                          <SelectItem key={mat.id} value={mat.id.toString()}>
-                            {mat.name} (Stock: {mat.current_stock} {mat.unit})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Input
-                      type="number"
-                      placeholder="Qty"
-                      value={material.quantity}
-                      onChange={(e) => handleMaterialChange(index, "quantity", Number.parseFloat(e.target.value) || 0)}
-                      className="w-20"
-                      min="0"
-                      step="0.1"
-                    />
-                    <span className="text-sm text-gray-500 w-12">{material.unit}</span>
-                    <Button type="button" variant="outline" size="sm" onClick={() => handleMaterialRemove(index)}>
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
+              <Label>Materials Used</Label>
+              <div className="space-y-2">
+                <Select onValueChange={(value) => handleMaterialAdd(parseInt(value))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Add material" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {materials
+                      .filter((m) => !formData.materials_used.some((used) => used.material_id === m.id))
+                      .map((material) => (
+                        <SelectItem key={material.id} value={material.id.toString()}>
+                          {material.name} (Available: {material.current_stock} {material.unit})
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+
+                {formData.materials_used.length > 0 && (
+                  <div className="border rounded-md p-3 space-y-2">
+                    {formData.materials_used.map((material) => (
+                      <div key={material.material_id} className="flex items-center gap-2">
+                        <span className="flex-1 text-sm">{material.material_name}</span>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          value={material.quantity}
+                          onChange={(e) =>
+                            handleMaterialQuantityChange(material.material_id, parseFloat(e.target.value) || 0)
+                          }
+                          className="w-20"
+                        />
+                        <span className="text-sm text-gray-500">{material.unit}</span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleMaterialRemove(material.material_id)}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
             </div>
 
@@ -935,7 +1067,7 @@ Generated on: ${new Date().toLocaleString()}
                 placeholder="Additional notes or observations"
                 value={formData.notes}
                 onChange={(e) => setFormData((prev) => ({ ...prev, notes: e.target.value }))}
-                rows={2}
+                rows={3}
               />
             </div>
           </div>
@@ -957,129 +1089,13 @@ Generated on: ${new Date().toLocaleString()}
         </DialogContent>
       </Dialog>
 
-      {/* View Dialog */}
-      <Dialog open={showViewDialog} onOpenChange={setShowViewDialog}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Daily Log Details</DialogTitle>
-            <DialogDescription>View complete daily log information</DialogDescription>
-          </DialogHeader>
-          {selectedLog && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">Title</Label>
-                  <p className="text-sm">{selectedLog.title}</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">Date</Label>
-                  <p className="text-sm">{new Date(selectedLog.date).toLocaleDateString()}</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">Project</Label>
-                  <p className="text-sm">{selectedLog.project_name || "Unknown Project"}</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">Working Place</Label>
-                  <div className="flex items-center gap-1">
-                    <MapPin className="h-3 w-3 text-gray-500" />
-                    <p className="text-sm">{selectedLog.working_place || "Not specified"}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <Label className="text-sm font-medium text-gray-500">Work Completed</Label>
-                <p className="text-sm mt-1 p-2 bg-gray-50 rounded">
-                  {selectedLog.work_completed || "No description provided"}
-                </p>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">Weather</Label>
-                  <div className="flex items-center gap-1 mt-1">
-                    {getWeatherIcon(selectedLog.weather)}
-                    <p className="text-sm">{selectedLog.weather}</p>
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">Status</Label>
-                  <div className="mt-1">{getStatusBadge(selectedLog.status)}</div>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">Hours Worked</Label>
-                  <p className="text-sm mt-1">{selectedLog.hours_worked || 0} hours</p>
-                </div>
-              </div>
-
-              <div>
-                <Label className="text-sm font-medium text-gray-500">Workers Present</Label>
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {selectedLog.workers_present && selectedLog.workers_present.length > 0 ? (
-                    selectedLog.workers_present.map((worker, index) => (
-                      <Badge key={index} variant="secondary" className="text-xs">
-                        {worker}
-                      </Badge>
-                    ))
-                  ) : (
-                    <p className="text-sm text-gray-500">No workers recorded</p>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <Label className="text-sm font-medium text-gray-500">Materials Used</Label>
-                <div className="mt-1">
-                  {selectedLog.materials_used && selectedLog.materials_used.length > 0 ? (
-                    <div className="space-y-1">
-                      {selectedLog.materials_used.map((material, index) => (
-                        <div key={index} className="flex items-center gap-2 p-2 bg-gray-50 rounded text-sm">
-                          <Package className="h-3 w-3 text-gray-500" />
-                          <span>{material.material_name}</span>
-                          <Badge variant="outline" className="text-xs">
-                            {material.quantity} {material.unit}
-                          </Badge>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-gray-500">No materials used</p>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <Label className="text-sm font-medium text-gray-500">Notes</Label>
-                <p className="text-sm mt-1 p-2 bg-gray-50 rounded">{selectedLog.notes || "No additional notes"}</p>
-              </div>
-            </div>
-          )}
-          <div className="flex justify-end space-x-2">
-            <Button variant="outline" onClick={() => setShowViewDialog(false)}>
-              Close
-            </Button>
-            {selectedLog && (
-              <Button onClick={() => generatePDF(selectedLog)}>
-                <Download className="h-4 w-4 mr-2" />
-                Download PDF
-              </Button>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete "{selectedLog?.title}" and restore any materials used back to inventory. This
-              action cannot be undone.
+              This will permanently delete "{selectedLog?.title}" and all its data. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

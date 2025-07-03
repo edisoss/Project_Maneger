@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
+import { Progress } from "@/components/ui/progress"
 import {
   Dialog,
   DialogContent,
@@ -27,17 +28,15 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Progress } from "@/components/ui/progress"
-import { Plus, Edit, Trash2, Building2, Calendar, MapPin, Loader2 } from "lucide-react"
+import { Plus, Edit, Trash2, Building2, Calendar, MapPin, TrendingUp, Loader2 } from "lucide-react"
 import { addProject, updateProject, deleteProject } from "@/lib/database"
 import type { Project } from "@/lib/database"
 import { useToast } from "@/hooks/use-toast"
-import type { Activity } from "./recent-activities"
 
 interface ProjectsTabProps {
   projects: Project[]
   setProjects: (projects: Project[]) => void
-  logActivity: (activity: Omit<Activity, "id" | "timestamp">) => void
+  logActivity?: (activity: any) => void
 }
 
 export default function ProjectsTab({ projects = [], setProjects = () => {}, logActivity }: ProjectsTabProps) {
@@ -67,7 +66,7 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
     setFormData({
       name: "",
       description: "",
-      type: "",
+      type: projectTypes[0],
       location: "",
       status: "Planning",
       start_date: "",
@@ -79,22 +78,25 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
   const handleAddProject = async () => {
     try {
       setSaving(true)
-      if (!formData.name || !formData.type || !formData.location) {
+      if (!formData.name || !formData.location || !formData.start_date) {
         toast({ title: "Error", description: "Please fill in all required fields", variant: "destructive" })
         return
       }
+
       const newProject = await addProject(formData)
       if (!newProject) {
         toast({ title: "Error", description: "Failed to add project.", variant: "destructive" })
         return
       }
-      logActivity({
+
+      logActivity?.({
         type: "project",
         title: "Project Created",
         description: `New project "${newProject.name}" was created.`,
         icon: Plus,
         variant: "default",
       })
+
       setProjects([...projects, newProject])
       setShowAddDialog(false)
       resetForm()
@@ -126,22 +128,25 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
     if (!selectedProject) return
     try {
       setSaving(true)
-      if (!formData.name || !formData.type || !formData.location) {
+      if (!formData.name || !formData.location || !formData.start_date) {
         toast({ title: "Error", description: "Please fill in all required fields", variant: "destructive" })
         return
       }
+
       const updatedProject = await updateProject(selectedProject.id, formData)
       if (!updatedProject) {
         toast({ title: "Error", description: "Failed to update project.", variant: "destructive" })
         return
       }
-      logActivity({
+
+      logActivity?.({
         type: "project",
         title: "Project Updated",
         description: `Project "${updatedProject.name}" was updated.`,
         icon: Edit,
         variant: "secondary",
       })
+
       setProjects(projects.map((p) => (p.id === selectedProject.id ? updatedProject : p)))
       setShowEditDialog(false)
       setSelectedProject(null)
@@ -169,13 +174,15 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
         toast({ title: "Error", description: "Failed to delete project.", variant: "destructive" })
         return
       }
-      logActivity({
+
+      logActivity?.({
         type: "project",
         title: "Project Deleted",
         description: `Project "${selectedProject.name}" was deleted.`,
         icon: Trash2,
         variant: "destructive",
       })
+
       setProjects(projects.filter((p) => p.id !== selectedProject.id))
       setShowDeleteDialog(false)
       setSelectedProject(null)
@@ -192,10 +199,12 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
     switch (status) {
       case "Active":
         return <Badge variant="default">{status}</Badge>
-      case "Completed":
+      case "Planning":
         return <Badge variant="secondary">{status}</Badge>
       case "On Hold":
         return <Badge variant="outline">{status}</Badge>
+      case "Completed":
+        return <Badge className="bg-green-100 text-green-800">{status}</Badge>
       case "Cancelled":
         return <Badge variant="destructive">{status}</Badge>
       default:
@@ -203,11 +212,12 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
     }
   }
 
+  // Calculate statistics
   const totalProjects = projects.length
   const activeProjects = projects.filter((p) => p.status === "Active").length
   const completedProjects = projects.filter((p) => p.status === "Completed").length
   const avgProgress =
-    projects.length > 0 ? Math.round(projects.reduce((sum, p) => sum + p.progress, 0) / projects.length) : 0
+    projects.length > 0 ? Math.round(projects.reduce((acc, p) => acc + p.progress, 0) / projects.length) : 0
 
   return (
     <div className="space-y-6">
@@ -245,7 +255,7 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
                   />
                 </div>
                 <div>
-                  <Label htmlFor="type">Project Type *</Label>
+                  <Label htmlFor="type">Project Type</Label>
                   <Select
                     value={formData.type}
                     onValueChange={(value) => setFormData((prev) => ({ ...prev, type: value }))}
@@ -267,23 +277,24 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
                 <Label htmlFor="description">Description</Label>
                 <Textarea
                   id="description"
-                  placeholder="Project description"
+                  placeholder="Enter project description"
                   value={formData.description}
                   onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
+                  rows={3}
                 />
               </div>
               <div>
                 <Label htmlFor="location">Location *</Label>
                 <Input
                   id="location"
-                  placeholder="Project location"
+                  placeholder="Enter project location"
                   value={formData.location}
                   onChange={(e) => setFormData((prev) => ({ ...prev, location: e.target.value }))}
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="start_date">Start Date</Label>
+                  <Label htmlFor="start_date">Start Date *</Label>
                   <Input
                     id="start_date"
                     type="date"
@@ -369,7 +380,7 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active Projects</CardTitle>
-            <Calendar className="h-4 w-4 text-green-500" />
+            <TrendingUp className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">{activeProjects}</div>
@@ -389,7 +400,7 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Avg Progress</CardTitle>
-            <MapPin className="h-4 w-4 text-purple-500" />
+            <TrendingUp className="h-4 w-4 text-purple-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-purple-600">{avgProgress}%</div>
@@ -401,19 +412,19 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
       {/* Projects Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Projects Overview</CardTitle>
+          <CardTitle>Construction Projects</CardTitle>
           <CardDescription>Manage and track your construction projects</CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
+                <TableHead>Project Name</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Location</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Progress</TableHead>
-                <TableHead>Start Date</TableHead>
+                <TableHead>Timeline</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -421,21 +432,40 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
               {projects.map((project) => (
                 <TableRow key={project.id}>
                   <TableCell>
-                    <div className="font-medium">{project.name}</div>
-                    <div className="text-sm text-gray-500 truncate max-w-xs">{project.description}</div>
+                    <div>
+                      <div className="font-medium">{project.name}</div>
+                      <div className="text-sm text-gray-500 truncate max-w-xs">{project.description}</div>
+                    </div>
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline">{project.type}</Badge>
                   </TableCell>
-                  <TableCell>{project.location}</TableCell>
-                  <TableCell>{getStatusBadge(project.status)}</TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Progress value={project.progress} className="w-16" />
-                      <span className="text-sm">{project.progress}%</span>
+                    <div className="flex items-center">
+                      <MapPin className="h-4 w-4 mr-2 text-gray-400" />
+                      {project.location}
                     </div>
                   </TableCell>
-                  <TableCell>{project.start_date ? new Date(project.start_date).toLocaleDateString() : "-"}</TableCell>
+                  <TableCell>{getStatusBadge(project.status)}</TableCell>
+                  <TableCell>
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-sm">
+                        <span>{project.progress}%</span>
+                      </div>
+                      <Progress value={project.progress} className="h-2" />
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center text-sm">
+                      <Calendar className="h-4 w-4 mr-2 text-gray-400" />
+                      <div>
+                        <div>{new Date(project.start_date).toLocaleDateString()}</div>
+                        {project.end_date && (
+                          <div className="text-gray-500">to {new Date(project.end_date).toLocaleDateString()}</div>
+                        )}
+                      </div>
+                    </div>
+                  </TableCell>
                   <TableCell>
                     <div className="flex space-x-2">
                       <Button variant="outline" size="sm" onClick={() => handleEdit(project)}>
@@ -477,7 +507,7 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
                 />
               </div>
               <div>
-                <Label htmlFor="edit-type">Project Type *</Label>
+                <Label htmlFor="edit-type">Project Type</Label>
                 <Select
                   value={formData.type}
                   onValueChange={(value) => setFormData((prev) => ({ ...prev, type: value }))}
@@ -499,23 +529,24 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
               <Label htmlFor="edit-description">Description</Label>
               <Textarea
                 id="edit-description"
-                placeholder="Project description"
+                placeholder="Enter project description"
                 value={formData.description}
                 onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
+                rows={3}
               />
             </div>
             <div>
               <Label htmlFor="edit-location">Location *</Label>
               <Input
                 id="edit-location"
-                placeholder="Project location"
+                placeholder="Enter project location"
                 value={formData.location}
                 onChange={(e) => setFormData((prev) => ({ ...prev, location: e.target.value }))}
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="edit-start_date">Start Date</Label>
+                <Label htmlFor="edit-start_date">Start Date *</Label>
                 <Input
                   id="edit-start_date"
                   type="date"

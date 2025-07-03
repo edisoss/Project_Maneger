@@ -27,8 +27,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Plus, Edit, Trash2, Users, UserCheck, UserX, Settings, Loader2 } from "lucide-react"
-import { addWorker, updateWorker, deleteWorker, addRole, addSkill, deleteRole, deleteSkill } from "@/lib/database"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Separator } from "@/components/ui/separator"
+import { Plus, Edit, Trash2, Users, Phone, Calendar, Settings, Loader2, UserCheck, UserX, Award } from 'lucide-react'
+import { addWorker, updateWorker, deleteWorker, addRole, deleteRole, addSkill, deleteSkill } from "@/lib/database"
 import type { Worker, Role, Skill } from "@/lib/database"
 import { useToast } from "@/hooks/use-toast"
 import type { Activity } from "./recent-activities"
@@ -59,10 +61,9 @@ export default function WorkersTab({
   const [selectedWorker, setSelectedWorker] = useState<Worker | null>(null)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const { toast } = useToast()
-
   const [newRoleName, setNewRoleName] = useState("")
   const [newSkillName, setNewSkillName] = useState("")
+  const { toast } = useToast()
 
   const [formData, setFormData] = useState({
     name: "",
@@ -70,8 +71,10 @@ export default function WorkersTab({
     role: "",
     skills: [] as string[],
     status: "Active",
-    hire_date: new Date().toISOString().split("T")[0],
+    hire_date: "",
   })
+
+  const statusOptions = ["Active", "Inactive", "On Leave", "Terminated"]
 
   const resetForm = () => {
     setFormData({
@@ -80,15 +83,8 @@ export default function WorkersTab({
       role: roles[0]?.name || "",
       skills: [],
       status: "Active",
-      hire_date: new Date().toISOString().split("T")[0],
+      hire_date: "",
     })
-  }
-
-  const handleSkillToggle = (skillName: string, checked: boolean) => {
-    setFormData((prev) => ({
-      ...prev,
-      skills: checked ? [...prev.skills, skillName] : prev.skills.filter((s) => s !== skillName),
-    }))
   }
 
   const handleAddWorker = async () => {
@@ -98,11 +94,18 @@ export default function WorkersTab({
         toast({ title: "Error", description: "Please fill in all required fields", variant: "destructive" })
         return
       }
-      const newWorker = await addWorker(formData)
+
+      const workerData = {
+        ...formData,
+        specialty: formData.role, // Set specialty same as role
+      }
+
+      const newWorker = await addWorker(workerData)
       if (!newWorker) {
         toast({ title: "Error", description: "Failed to add worker.", variant: "destructive" })
         return
       }
+
       logActivity({
         type: "worker",
         title: "Worker Added",
@@ -110,6 +113,7 @@ export default function WorkersTab({
         icon: Plus,
         variant: "default",
       })
+
       setWorkers([...workers, newWorker])
       setShowAddDialog(false)
       resetForm()
@@ -143,11 +147,16 @@ export default function WorkersTab({
         toast({ title: "Error", description: "Please fill in all required fields", variant: "destructive" })
         return
       }
-      const updatedWorker = await updateWorker(selectedWorker.id, formData)
+
+      const updatedWorker = await updateWorker(selectedWorker.id, {
+        ...formData,
+        specialty: formData.role, // Set specialty same as role
+      })
       if (!updatedWorker) {
         toast({ title: "Error", description: "Failed to update worker.", variant: "destructive" })
         return
       }
+
       logActivity({
         type: "worker",
         title: "Worker Updated",
@@ -155,6 +164,7 @@ export default function WorkersTab({
         icon: Edit,
         variant: "secondary",
       })
+
       setWorkers(workers.map((w) => (w.id === selectedWorker.id ? updatedWorker : w)))
       setShowEditDialog(false)
       setSelectedWorker(null)
@@ -182,13 +192,15 @@ export default function WorkersTab({
         toast({ title: "Error", description: "Failed to delete worker.", variant: "destructive" })
         return
       }
+
       logActivity({
         type: "worker",
-        title: "Worker Removed",
+        title: "Worker Deleted",
         description: `Worker "${selectedWorker.name}" was removed from the team.`,
         icon: Trash2,
         variant: "destructive",
       })
+
       setWorkers(workers.filter((w) => w.id !== selectedWorker.id))
       setShowDeleteDialog(false)
       setSelectedWorker(null)
@@ -202,27 +214,27 @@ export default function WorkersTab({
   }
 
   const handleAddRole = async () => {
-    if (!newRoleName.trim()) return
-    const newRole = await addRole(newRoleName.trim())
-    if (newRole) {
-      setRoles([...roles, newRole])
-      setNewRoleName("")
-      toast({ title: "Success", description: "Role added successfully!" })
+    if (!newRoleName.trim()) {
+      toast({ title: "Error", description: "Please enter a role name", variant: "destructive" })
+      return
     }
-  }
 
-  const handleAddSkill = async () => {
-    if (!newSkillName.trim()) return
-    const newSkill = await addSkill(newSkillName.trim())
-    if (newSkill) {
-      setSkills([...skills, newSkill])
-      setNewSkillName("")
-      toast({ title: "Success", description: "Skill added successfully!" })
+    try {
+      const newRole = await addRole(newRoleName.trim())
+      if (newRole) {
+        setRoles([...roles, newRole])
+        setNewRoleName("")
+        toast({ title: "Success", description: "Role added successfully!" })
+      }
+    } catch (error) {
+      console.error("Error adding role:", error)
+      toast({ title: "Error", description: "Failed to add role", variant: "destructive" })
     }
   }
 
   const handleDeleteRole = async (roleId: number) => {
-    const isInUse = workers.some((w) => w.role === roles.find((r) => r.id === roleId)?.name)
+    // Check if role is in use
+    const isInUse = workers.some((worker) => worker.role === roles.find((r) => r.id === roleId)?.name)
     if (isInUse) {
       toast({
         title: "Error",
@@ -231,15 +243,68 @@ export default function WorkersTab({
       })
       return
     }
-    await deleteRole(roleId)
-    setRoles(roles.filter((r) => r.id !== roleId))
-    toast({ title: "Success", description: "Role deleted successfully!" })
+
+    try {
+      const success = await deleteRole(roleId)
+      if (success) {
+        setRoles(roles.filter((role) => role.id !== roleId))
+        toast({ title: "Success", description: "Role deleted successfully!" })
+      }
+    } catch (error) {
+      console.error("Error deleting role:", error)
+      toast({ title: "Error", description: "Failed to delete role", variant: "destructive" })
+    }
+  }
+
+  const handleAddSkill = async () => {
+    if (!newSkillName.trim()) {
+      toast({ title: "Error", description: "Please enter a skill name", variant: "destructive" })
+      return
+    }
+
+    try {
+      const newSkill = await addSkill(newSkillName.trim())
+      if (newSkill) {
+        setSkills([...skills, newSkill])
+        setNewSkillName("")
+        toast({ title: "Success", description: "Skill added successfully!" })
+      }
+    } catch (error) {
+      console.error("Error adding skill:", error)
+      toast({ title: "Error", description: "Failed to add skill", variant: "destructive" })
+    }
   }
 
   const handleDeleteSkill = async (skillId: number) => {
-    await deleteSkill(skillId)
-    setSkills(skills.filter((s) => s.id !== skillId))
-    toast({ title: "Success", description: "Skill deleted successfully!" })
+    // Check if skill is in use
+    const skillName = skills.find((s) => s.id === skillId)?.name
+    const isInUse = workers.some((worker) => worker.skills?.includes(skillName || ""))
+    if (isInUse) {
+      toast({
+        title: "Error",
+        description: "Cannot delete skill that is currently assigned to workers",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      const success = await deleteSkill(skillId)
+      if (success) {
+        setSkills(skills.filter((skill) => skill.id !== skillId))
+        toast({ title: "Success", description: "Skill deleted successfully!" })
+      }
+    } catch (error) {
+      console.error("Error deleting skill:", error)
+      toast({ title: "Error", description: "Failed to delete skill", variant: "destructive" })
+    }
+  }
+
+  const handleSkillToggle = (skillName: string, checked: boolean) => {
+    setFormData((prev) => ({
+      ...prev,
+      skills: checked ? [...prev.skills, skillName] : prev.skills.filter((s) => s !== skillName),
+    }))
   }
 
   const getStatusBadge = (status: string) => {
@@ -250,18 +315,21 @@ export default function WorkersTab({
         return <Badge variant="secondary">{status}</Badge>
       case "On Leave":
         return <Badge variant="outline">{status}</Badge>
+      case "Terminated":
+        return <Badge variant="destructive">{status}</Badge>
       default:
         return <Badge variant="outline">{status}</Badge>
     }
   }
 
+  // Calculate statistics
   const totalWorkers = workers.length
   const activeWorkers = workers.filter((w) => w.status === "Active").length
-  const inactiveWorkers = workers.filter((w) => w.status === "Inactive").length
   const onLeaveWorkers = workers.filter((w) => w.status === "On Leave").length
+  const totalRoles = roles.length
 
   return (
-    <div className="space-y-6 px-6">
+    <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold">Workers Management</h2>
@@ -287,7 +355,7 @@ export default function WorkersTab({
             <DialogContent className="max-w-2xl">
               <DialogHeader>
                 <DialogTitle>Add New Worker</DialogTitle>
-                <DialogDescription>Add a new team member to your construction crew</DialogDescription>
+                <DialogDescription>Add a new team member</DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
@@ -295,7 +363,7 @@ export default function WorkersTab({
                     <Label htmlFor="name">Full Name *</Label>
                     <Input
                       id="name"
-                      placeholder="Enter worker name"
+                      placeholder="Enter full name"
                       value={formData.name}
                       onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
                     />
@@ -339,9 +407,11 @@ export default function WorkersTab({
                         <SelectValue placeholder="Select status" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Active">Active</SelectItem>
-                        <SelectItem value="Inactive">Inactive</SelectItem>
-                        <SelectItem value="On Leave">On Leave</SelectItem>
+                        {statusOptions.map((status) => (
+                          <SelectItem key={status} value={status}>
+                            {status}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -357,25 +427,22 @@ export default function WorkersTab({
                 </div>
                 <div>
                   <Label>Skills</Label>
-                  <div className="grid grid-cols-2 gap-2 mt-2 max-h-32 overflow-y-auto border rounded p-2">
-                    {skills.map((skill) => (
-                      <div key={skill.id} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`skill-${skill.id}`}
-                          checked={formData.skills.includes(skill.name)}
-                          onCheckedChange={(checked) => handleSkillToggle(skill.name, checked as boolean)}
-                        />
-                        <Label htmlFor={`skill-${skill.id}`} className="text-sm">
-                          {skill.name}
-                        </Label>
-                      </div>
-                    ))}
-                  </div>
-                  {skills.length === 0 && (
-                    <p className="text-sm text-gray-500 mt-2">
-                      No skills available. Add skills in Manage Roles & Skills.
-                    </p>
-                  )}
+                  <ScrollArea className="h-32 border rounded-md p-3">
+                    <div className="space-y-2">
+                      {skills.map((skill) => (
+                        <div key={skill.id} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`skill-${skill.id}`}
+                            checked={formData.skills.includes(skill.name)}
+                            onCheckedChange={(checked) => handleSkillToggle(skill.name, checked as boolean)}
+                          />
+                          <Label htmlFor={`skill-${skill.id}`} className="text-sm">
+                            {skill.name}
+                          </Label>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
                 </div>
               </div>
               <div className="flex justify-end space-x-2">
@@ -422,22 +489,22 @@ export default function WorkersTab({
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Inactive</CardTitle>
-            <UserX className="h-4 w-4 text-red-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">{inactiveWorkers}</div>
-            <p className="text-xs text-muted-foreground">Not active</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">On Leave</CardTitle>
-            <Users className="h-4 w-4 text-yellow-500" />
+            <UserX className="h-4 w-4 text-yellow-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-yellow-600">{onLeaveWorkers}</div>
             <p className="text-xs text-muted-foreground">Temporarily away</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Roles</CardTitle>
+            <Award className="h-4 w-4 text-purple-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-purple-600">{totalRoles}</div>
+            <p className="text-xs text-muted-foreground">Different positions</p>
           </CardContent>
         </Card>
       </div>
@@ -453,8 +520,8 @@ export default function WorkersTab({
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
-                <TableHead>Phone</TableHead>
                 <TableHead>Role</TableHead>
+                <TableHead>Phone</TableHead>
                 <TableHead>Skills</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Hire Date</TableHead>
@@ -467,32 +534,40 @@ export default function WorkersTab({
                   <TableCell>
                     <div className="font-medium">{worker.name}</div>
                   </TableCell>
-                  <TableCell>{worker.phone}</TableCell>
                   <TableCell>
                     <Badge variant="outline">{worker.role}</Badge>
                   </TableCell>
                   <TableCell>
+                    <div className="flex items-center">
+                      <Phone className="h-4 w-4 mr-2 text-gray-400" />
+                      {worker.phone}
+                    </div>
+                  </TableCell>
+                  <TableCell>
                     <div className="flex flex-wrap gap-1">
                       {worker.skills && worker.skills.length > 0 ? (
-                        <>
-                          {worker.skills.slice(0, 2).map((skill, index) => (
-                            <Badge key={index} variant="secondary" className="text-xs">
-                              {skill}
-                            </Badge>
-                          ))}
-                          {worker.skills.length > 2 && (
-                            <Badge variant="secondary" className="text-xs">
-                              +{worker.skills.length - 2}
-                            </Badge>
-                          )}
-                        </>
+                        worker.skills.slice(0, 3).map((skill, index) => (
+                          <Badge key={index} variant="secondary" className="text-xs">
+                            {skill}
+                          </Badge>
+                        ))
                       ) : (
-                        <span className="text-sm text-gray-500">No skills</span>
+                        <span className="text-gray-400 text-sm">No skills</span>
+                      )}
+                      {worker.skills && worker.skills.length > 3 && (
+                        <Badge variant="outline" className="text-xs">
+                          +{worker.skills.length - 3}
+                        </Badge>
                       )}
                     </div>
                   </TableCell>
                   <TableCell>{getStatusBadge(worker.status)}</TableCell>
-                  <TableCell>{new Date(worker.hire_date).toLocaleDateString()}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center">
+                      <Calendar className="h-4 w-4 mr-2 text-gray-400" />
+                      {worker.hire_date ? new Date(worker.hire_date).toLocaleDateString() : "-"}
+                    </div>
+                  </TableCell>
                   <TableCell>
                     <div className="flex space-x-2">
                       <Button variant="outline" size="sm" onClick={() => handleEdit(worker)}>
@@ -528,7 +603,7 @@ export default function WorkersTab({
                 <Label htmlFor="edit-name">Full Name *</Label>
                 <Input
                   id="edit-name"
-                  placeholder="Enter worker name"
+                  placeholder="Enter full name"
                   value={formData.name}
                   onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
                 />
@@ -572,9 +647,11 @@ export default function WorkersTab({
                     <SelectValue placeholder="Select status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Active">Active</SelectItem>
-                    <SelectItem value="Inactive">Inactive</SelectItem>
-                    <SelectItem value="On Leave">On Leave</SelectItem>
+                    {statusOptions.map((status) => (
+                      <SelectItem key={status} value={status}>
+                        {status}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -590,23 +667,22 @@ export default function WorkersTab({
             </div>
             <div>
               <Label>Skills</Label>
-              <div className="grid grid-cols-2 gap-2 mt-2 max-h-32 overflow-y-auto border rounded p-2">
-                {skills.map((skill) => (
-                  <div key={skill.id} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={`edit-skill-${skill.id}`}
-                      checked={formData.skills.includes(skill.name)}
-                      onCheckedChange={(checked) => handleSkillToggle(skill.name, checked as boolean)}
-                    />
-                    <Label htmlFor={`edit-skill-${skill.id}`} className="text-sm">
-                      {skill.name}
-                    </Label>
-                  </div>
-                ))}
-              </div>
-              {skills.length === 0 && (
-                <p className="text-sm text-gray-500 mt-2">No skills available. Add skills in Manage Roles & Skills.</p>
-              )}
+              <ScrollArea className="h-32 border rounded-md p-3">
+                <div className="space-y-2">
+                  {skills.map((skill) => (
+                    <div key={skill.id} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`edit-skill-${skill.id}`}
+                        checked={formData.skills.includes(skill.name)}
+                        onCheckedChange={(checked) => handleSkillToggle(skill.name, checked as boolean)}
+                      />
+                      <Label htmlFor={`edit-skill-${skill.id}`} className="text-sm">
+                        {skill.name}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
             </div>
           </div>
           <div className="flex justify-end space-x-2">
@@ -657,12 +733,14 @@ export default function WorkersTab({
         <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Manage Roles & Skills</DialogTitle>
-            <DialogDescription>Add and manage worker roles and skills</DialogDescription>
+            <DialogDescription>Add or remove roles and skills for your team</DialogDescription>
           </DialogHeader>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Roles Section */}
             <div className="space-y-4">
               <h3 className="text-lg font-semibold">Roles</h3>
+
               <div className="flex gap-2">
                 <Input
                   placeholder="Enter role name"
@@ -674,22 +752,31 @@ export default function WorkersTab({
                   <Plus className="h-4 w-4" />
                 </Button>
               </div>
+
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {roles.map((role) => (
                   <div key={role.id} className="flex justify-between items-center p-2 border rounded">
                     <span>{role.name}</span>
-                    <Button variant="outline" size="sm" onClick={() => handleDeleteRole(role.id)}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDeleteRole(role.id)}
+                      disabled={role.is_default}
+                    >
                       <Trash2 className="h-3 w-3" />
                     </Button>
                   </div>
                 ))}
-                {roles.length === 0 && <p className="text-gray-500 text-center py-4">No roles added yet</p>}
+                {roles.length === 0 && (
+                  <p className="text-gray-500 text-center py-4">No roles added yet</p>
+                )}
               </div>
             </div>
 
             {/* Skills Section */}
             <div className="space-y-4">
               <h3 className="text-lg font-semibold">Skills</h3>
+
               <div className="flex gap-2">
                 <Input
                   placeholder="Enter skill name"
@@ -701,19 +788,28 @@ export default function WorkersTab({
                   <Plus className="h-4 w-4" />
                 </Button>
               </div>
+
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {skills.map((skill) => (
                   <div key={skill.id} className="flex justify-between items-center p-2 border rounded">
                     <span>{skill.name}</span>
-                    <Button variant="outline" size="sm" onClick={() => handleDeleteSkill(skill.id)}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDeleteSkill(skill.id)}
+                      disabled={skill.is_default}
+                    >
                       <Trash2 className="h-3 w-3" />
                     </Button>
                   </div>
                 ))}
-                {skills.length === 0 && <p className="text-gray-500 text-center py-4">No skills added yet</p>}
+                {skills.length === 0 && (
+                  <p className="text-gray-500 text-center py-4">No skills added yet</p>
+                )}
               </div>
             </div>
           </div>
+
           <div className="flex justify-end">
             <Button onClick={() => setShowManageDialog(false)}>Close</Button>
           </div>

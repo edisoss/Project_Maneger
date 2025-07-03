@@ -1,88 +1,23 @@
 "use client"
 
-import type React from "react"
-
 import { Badge } from "@/components/ui/badge"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Package, TrendingUp, TrendingDown, RotateCcw, Calendar, Clock } from "lucide-react"
-import type { MaterialTransaction, Material, Project } from "@/lib/database"
+import { Clock } from "lucide-react"
 
 export interface Activity {
   id: string
-  type: "project" | "worker" | "material" | "daily_log" | "material_transaction"
+  type: "project" | "worker" | "material" | "daily_log" | "user"
   title: string
   description: string
   timestamp: string
-  icon: React.ComponentType<{ className?: string }>
+  icon: any
   variant: "default" | "secondary" | "destructive" | "outline"
 }
 
 interface RecentActivitiesProps {
-  manualActivities?: Activity[]
-  materialTransactions?: MaterialTransaction[]
-  materials?: Material[]
-  projects?: Project[]
+  activities?: Activity[]
 }
 
-export default function RecentActivities({
-  manualActivities = [],
-  materialTransactions = [],
-  materials = [],
-  projects = [],
-}: RecentActivitiesProps) {
-  // Convert material transactions to activities
-  const transactionActivities: Activity[] = materialTransactions.slice(0, 10).map((transaction) => {
-    const material = materials.find((m) => m.id === transaction.material_id)
-    const materialName = material?.name || `Material ID ${transaction.material_id}`
-
-    let icon = Package
-    let variant: Activity["variant"] = "outline"
-    let title = "Material Transaction"
-    let description = `${materialName}: ${transaction.transaction_type}`
-
-    switch (transaction.transaction_type) {
-      case "added":
-        icon = TrendingUp
-        variant = "default"
-        title = "Material Added"
-        description = `${materialName}: +${transaction.quantity} added to inventory`
-        break
-      case "used":
-        icon = TrendingDown
-        variant = "secondary"
-        title = "Material Used"
-        description = `${materialName}: -${transaction.quantity} used in project`
-        break
-      case "adjusted":
-        icon = RotateCcw
-        variant = "outline"
-        title = "Stock Adjusted"
-        description = `${materialName}: stock adjusted by ${transaction.quantity}`
-        break
-      case "returned":
-        icon = RotateCcw
-        variant = "outline"
-        title = "Material Returned"
-        description = `${materialName}: +${transaction.quantity} returned to inventory`
-        break
-    }
-
-    return {
-      id: `transaction-${transaction.id}`,
-      type: "material_transaction" as const,
-      title,
-      description,
-      timestamp: transaction.created_at,
-      icon,
-      variant,
-    }
-  })
-
-  // Combine and sort all activities
-  const allActivities = [...manualActivities, ...transactionActivities]
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-    .slice(0, 15)
-
+export default function RecentActivities({ activities = [] }: RecentActivitiesProps) {
   const getTimeAgo = (timestamp: string) => {
     const now = new Date()
     const time = new Date(timestamp)
@@ -90,66 +25,91 @@ export default function RecentActivities({
 
     if (diffInMinutes < 1) return "Just now"
     if (diffInMinutes < 60) return `${diffInMinutes}m ago`
-
-    const diffInHours = Math.floor(diffInMinutes / 60)
-    if (diffInHours < 24) return `${diffInHours}h ago`
-
-    const diffInDays = Math.floor(diffInHours / 24)
-    if (diffInDays < 7) return `${diffInDays}d ago`
-
-    return time.toLocaleDateString()
+    if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h ago`
+    return `${Math.floor(diffInMinutes / 1440)}d ago`
   }
 
-  if (allActivities.length === 0) {
+  const getActivityIcon = (activity: Activity) => {
+    const IconComponent = activity.icon
+    return <IconComponent className="h-4 w-4" />
+  }
+
+  const getActivityBadge = (type: string) => {
+    switch (type) {
+      case "project":
+        return (
+          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+            Project
+          </Badge>
+        )
+      case "worker":
+        return (
+          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+            Worker
+          </Badge>
+        )
+      case "material":
+        return (
+          <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+            Material
+          </Badge>
+        )
+      case "daily_log":
+        return (
+          <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
+            Daily Log
+          </Badge>
+        )
+      case "user":
+        return (
+          <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200">
+            User
+          </Badge>
+        )
+      default:
+        return <Badge variant="outline">Activity</Badge>
+    }
+  }
+
+  if (activities.length === 0) {
     return (
-      <div className="text-center py-8">
-        <Calendar className="h-8 w-8 mx-auto mb-2 text-gray-400" />
-        <p className="text-gray-500">No recent activities</p>
-        <p className="text-sm text-gray-400">Activities will appear here as you use the system</p>
+      <div className="flex flex-col items-center justify-center py-8 text-center">
+        <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+          <Clock className="h-6 w-6 text-gray-400" />
+        </div>
+        <h3 className="text-lg font-medium text-gray-900 mb-2">No recent activities</h3>
+        <p className="text-gray-500 text-sm">
+          Activities will appear here as you work with projects, workers, and materials.
+        </p>
       </div>
     )
   }
 
   return (
-    <ScrollArea className="h-80">
-      <div className="space-y-3">
-        {allActivities.map((activity) => {
-          const IconComponent = activity.icon
-          return (
-            <div key={activity.id} className="flex items-start gap-3 p-3 rounded-lg border bg-card">
-              <div className="flex-shrink-0">
-                <div
-                  className={`p-2 rounded-full ${
-                    activity.variant === "default"
-                      ? "bg-primary/10 text-primary"
-                      : activity.variant === "secondary"
-                        ? "bg-secondary/10 text-secondary-foreground"
-                        : activity.variant === "destructive"
-                          ? "bg-destructive/10 text-destructive"
-                          : "bg-muted text-muted-foreground"
-                  }`}
-                >
-                  <IconComponent className="h-4 w-4" />
-                </div>
-              </div>
-
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-medium truncate">{activity.title}</h4>
-                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <Clock className="h-3 w-3" />
-                    {getTimeAgo(activity.timestamp)}
-                  </div>
-                </div>
-                <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{activity.description}</p>
-                <Badge variant={activity.variant} className="mt-2 text-xs">
-                  {activity.type.replace("_", " ")}
-                </Badge>
-              </div>
+    <div className="space-y-4">
+      {activities.map((activity) => (
+        <div key={activity.id} className="flex items-start space-x-3 p-3 rounded-lg hover:bg-gray-50 transition-colors">
+          <div
+            className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
+              activity.variant === "destructive"
+                ? "bg-red-100 text-red-600"
+                : activity.variant === "secondary"
+                  ? "bg-gray-100 text-gray-600"
+                  : "bg-blue-100 text-blue-600"
+            }`}
+          >
+            {getActivityIcon(activity)}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-sm font-medium text-gray-900">{activity.title}</p>
+              {getActivityBadge(activity.type)}
             </div>
-          )
-        })}
-      </div>
-    </ScrollArea>
+            <p className="text-sm text-gray-600 mb-1">{activity.description}</p>
+            <p className="text-xs text-gray-400">{getTimeAgo(activity.timestamp)}</p>
+          </div>
+        </div>
+      ))}
+    </div>
   )
 }
