@@ -119,14 +119,30 @@ export default function MaterialsTab({
   const loadCategoriesAndLocations = async () => {
     try {
       setLoadingCategories(true)
+      console.log("Loading categories and locations...")
+
       const [categoriesData, locationsData] = await Promise.all([getMaterialCategories(), getMaterialLocations()])
+
+      console.log("Categories loaded:", categoriesData)
+      console.log("Locations loaded:", locationsData)
+
       setMaterialCategories(categoriesData)
       setMaterialLocations(locationsData)
+
+      // If no categories exist, add some default ones
+      if (categoriesData.length === 0) {
+        console.log("No categories found, you may need to add some default categories")
+      }
+
+      // If no locations exist, add some default ones
+      if (locationsData.length === 0) {
+        console.log("No locations found, you may need to add some default locations")
+      }
     } catch (error) {
       console.error("Error loading categories and locations:", error)
       toast({
         title: "Error",
-        description: "Failed to load categories and locations",
+        description: "Failed to load categories and locations. Check console for details.",
         variant: "destructive",
       })
     } finally {
@@ -1091,21 +1107,27 @@ export default function MaterialsTab({
               </div>
 
               <div className="space-y-2 max-h-64 overflow-y-auto">
-                {materialCategories.map((category) => (
-                  <div key={category.id} className="flex justify-between items-center p-2 border rounded">
-                    <span>{category.name}</span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDeleteCategory(category.id)}
-                      disabled={loadingCategories}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
+                {loadingCategories ? (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    <span className="text-sm text-gray-500">Loading categories...</span>
                   </div>
-                ))}
-                {materialCategories.length === 0 && (
-                  <p className="text-gray-500 text-center py-4">No categories added yet</p>
+                ) : materialCategories.length > 0 ? (
+                  materialCategories.map((category) => (
+                    <div key={category.id} className="flex justify-between items-center p-2 border rounded">
+                      <span>{category.name}</span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDeleteCategory(category.id)}
+                        disabled={loadingCategories}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-gray-500 text-center py-4">No categories found. Add your first category above.</p>
                 )}
               </div>
             </div>
@@ -1127,21 +1149,27 @@ export default function MaterialsTab({
               </div>
 
               <div className="space-y-2 max-h-64 overflow-y-auto">
-                {materialLocations.map((location) => (
-                  <div key={location.id} className="flex justify-between items-center p-2 border rounded">
-                    <span>{location.name}</span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDeleteLocation(location.id)}
-                      disabled={loadingCategories}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
+                {loadingCategories ? (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    <span className="text-sm text-gray-500">Loading locations...</span>
                   </div>
-                ))}
-                {materialLocations.length === 0 && (
-                  <p className="text-gray-500 text-center py-4">No locations added yet</p>
+                ) : materialLocations.length > 0 ? (
+                  materialLocations.map((location) => (
+                    <div key={location.id} className="flex justify-between items-center p-2 border rounded">
+                      <span>{location.name}</span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDeleteLocation(location.id)}
+                        disabled={loadingCategories}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-gray-500 text-center py-4">No locations found. Add your first location above.</p>
                 )}
               </div>
             </div>

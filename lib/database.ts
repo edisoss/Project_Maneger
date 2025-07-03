@@ -1,29 +1,30 @@
 import { createClientClient } from "./supabase-client"
 
 export interface Material {
-  id: number
+  id: string
   name: string
-  description?: string
+  description: string
   category: string
+  unit: string
   current_stock: number
   min_stock: number
-  unit: string
+  max_stock: number
+  unit_cost: number
+  supplier: string
   location: string
-  status: string
-  last_updated: string
-  created_at?: string
-  updated_at?: string
+  created_at: string
+  updated_at: string
 }
 
 export interface MaterialTransaction {
   id: number
-  material_id: number
+  material_id: string
   transaction_type: "added" | "used" | "adjusted" | "returned"
   quantity: number
   previous_stock: number
   new_stock: number
   reference_type?: string
-  reference_id?: number
+  reference_id?: string
   project?: string
   notes?: string
   created_by?: string
@@ -31,93 +32,84 @@ export interface MaterialTransaction {
 }
 
 export interface DailyLog {
-  id: number
-  title: string
+  id: string
   date: string
-  project_id: number
-  project_name?: string
-  work_completed?: string // UI alias
-  work_description?: string // DB column
-  working_place?: string // NEW field for location/place of work
-  hours_worked?: number // NEW (optional in UI, required in DB)
+  project_id: string
+  title: string
+  description: string
+  weather: string
+  temperature: number
   workers_present: string[]
   materials_used: Array<{
-    material_id: number
-    material_name: string
+    material_id: string
     quantity: number
-    unit: string
   }>
-  notes: string
-  weather: string
+  equipment_used: string[]
+  work_completed: string
+  issues_encountered: string
+  safety_incidents: string
   status: string
+  working_place: string
   created_by: string
   created_at: string
-  updated_at?: string
+  updated_at: string
 }
 
 export interface Project {
-  id: number
+  id: string
   name: string
   description: string
   type: string
-  location: string
   status: string
   start_date: string
   end_date: string
   progress: number
-  created_at?: string
-  updated_at?: string
+  created_at: string
+  updated_at: string
 }
 
 export interface Worker {
-  id: number
+  id: string
   name: string
+  email: string
   phone: string
   role: string
-  specialty: string
   skills: string[]
   status: string
   hire_date: string
-  email?: string
-  created_at?: string
-  updated_at?: string
+  hourly_rate: number
+  created_at: string
+  updated_at: string
 }
 
 export interface Role {
-  id: number
+  id: string
   name: string
-  description?: string
-  is_default: boolean
-  created_at?: string
-  updated_at?: string
+  description: string
+  created_at: string
 }
 
 export interface Skill {
-  id: number
+  id: string
   name: string
-  description?: string
-  category?: string
-  is_default: boolean
-  created_at?: string
-  updated_at?: string
+  description: string
+  category: string
+  created_at: string
 }
 
 export interface MaterialCategory {
-  id: number
+  id: string
   name: string
-  description?: string
-  is_default: boolean
-  created_at?: string
-  updated_at?: string
+  description: string
+  created_at: string
 }
 
 export interface MaterialLocation {
-  id: number
+  id: string
   name: string
-  description?: string
-  is_default: boolean
-  created_at?: string
-  updated_at?: string
+  description: string
+  address: string
+  created_at: string
 }
 
 export interface Profile {
@@ -125,43 +117,27 @@ export interface Profile {
   email: string
   full_name: string
   role: string
-  status: string
-  is_admin?: boolean
-  created_at?: string
-  updated_at?: string
+  is_admin: boolean
+  created_at: string
+  updated_at: string
 }
 
 // Profiles functions
-// ─────────────────────────────────────────────────────────────────────────────
-// Profiles
-// ─────────────────────────────────────────────────────────────────────────────
 export async function getProfiles(): Promise<Profile[]> {
-  try {
-    const supabase = createClientClient()
-    if (!supabase) {
-      console.warn("Supabase client not available – returning empty profile list")
-      return []
-    }
+  const supabase = createClientClient()
+  if (!supabase) return []
 
-    // Ask ONLY for the columns we render in the dashboard.
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("id, email, full_name, role, status, is_admin, created_at, updated_at")
-      .order("created_at", { ascending: false })
+  try {
+    const { data, error } = await supabase.from("profiles").select("*").order("created_at", { ascending: false })
 
     if (error) {
-      // Most common cause in previews: recursive RLS policy on the table.
-      console.error("Error fetching profiles:", {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-      })
+      console.error("Error fetching profiles:", error)
       return []
     }
 
-    return data ?? []
-  } catch (err) {
-    console.error("Error in getProfiles:", err)
+    return data || []
+  } catch (error) {
+    console.error("Error in getProfiles:", error)
     return []
   }
 }
@@ -170,36 +146,83 @@ export async function addProfile(profileData: {
   email: string
   full_name: string
   role: string
-  status?: string
-  is_admin?: boolean
+  password: string
+  is_admin: boolean
 }): Promise<Profile | null> {
   try {
-    const supabase = createClientClient()
-    if (!supabase) {
-      console.error("Supabase client not available")
-      return null
+    const response = await fetch("/api/admin/add-profile", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(profileData),
+    })
+
+    const result = await response.json()
+
+    if (!response.ok) {
+      throw new Error(result.error || "Failed to add profile")
     }
 
-    const { data, error } = await supabase
-      .from("profiles")
-      .insert([
-        {
-          ...profileData,
-          status: profileData.status ?? "active",
-        },
-      ])
-      .select()
-      .single()
-
-    if (error) {
-      console.error("Error adding profile:", error)
-      return null
-    }
-
-    return data
+    return result.profile
   } catch (error) {
-    console.error("Error in addProfile:", error)
-    return null
+    console.error("Error adding profile:", error)
+    throw error
+  }
+}
+
+export async function updateProfile(
+  id: string,
+  profileData: {
+    email: string
+    full_name: string
+    role: string
+    password?: string
+    is_admin: boolean
+  },
+): Promise<Profile | null> {
+  try {
+    const response = await fetch("/api/admin/update-profile", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ id, ...profileData }),
+    })
+
+    const result = await response.json()
+
+    if (!response.ok) {
+      throw new Error(result.error || "Failed to update profile")
+    }
+
+    return result.profile
+  } catch (error) {
+    console.error("Error updating profile:", error)
+    throw error
+  }
+}
+
+export async function deleteProfile(id: string): Promise<boolean> {
+  try {
+    const response = await fetch("/api/admin/delete-profile", {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ id }),
+    })
+
+    const result = await response.json()
+
+    if (!response.ok) {
+      throw new Error(result.error || "Failed to delete profile")
+    }
+
+    return result.success
+  } catch (error) {
+    console.error("Error deleting profile:", error)
+    throw error
   }
 }
 
@@ -267,7 +290,7 @@ export async function addMaterial(
   }
 }
 
-export async function updateMaterial(id: number, updates: Partial<Material>): Promise<Material | null> {
+export async function updateMaterial(id: string, updates: Partial<Material>): Promise<Material | null> {
   try {
     const supabase = createClientClient()
     if (!supabase) {
@@ -314,7 +337,7 @@ export async function updateMaterial(id: number, updates: Partial<Material>): Pr
   }
 }
 
-export async function deleteMaterial(id: number): Promise<boolean> {
+export async function deleteMaterial(id: string): Promise<boolean> {
   try {
     console.log("Starting delete process for material ID:", id)
 
@@ -358,7 +381,7 @@ export async function deleteMaterial(id: number): Promise<boolean> {
 }
 
 // Material Transactions functions
-export async function getMaterialTransactions(materialId?: number): Promise<MaterialTransaction[]> {
+export async function getMaterialTransactions(materialId?: string): Promise<MaterialTransaction[]> {
   try {
     const supabase = createClientClient()
     if (!supabase) {
@@ -465,20 +488,21 @@ export async function getDailyLogs(): Promise<DailyLog[]> {
 export async function addDailyLog(logData: {
   title: string
   date: string
-  project_id: number
-  work_completed: string
-  working_place?: string
+  project_id: string
+  description: string
+  weather: string
+  temperature: number
   workers_present: string[]
   materials_used: Array<{
-    material_id: number
-    material_name: string
+    material_id: string
     quantity: number
-    unit: string
   }>
-  notes: string
-  weather: string
+  equipment_used: string[]
+  work_completed: string
+  issues_encountered: string
+  safety_incidents: string
   status: string
-  hours_worked?: number
+  working_place: string
 }): Promise<DailyLog | null> {
   try {
     const supabase = createClientClient()
@@ -487,17 +511,10 @@ export async function addDailyLog(logData: {
       return null
     }
 
-    // ── ensure legacy NOT-NULL columns ─────────────────────────────────────────
-    const { data: projRow } = await supabase.from("projects").select("name").eq("id", logData.project_id).single()
-
     const logToInsert = {
       ...logData,
-      hours_worked: logData.hours_worked ?? 0, // <-- DEFAULT VALUE
-      project: projRow?.name ?? "Unknown Project", // legacy text column
-      work_description: logData.work_completed, // real column
       created_by: "admin@company.com",
     }
-    delete (logToInsert as any).work_completed // remove unknown col
 
     const { data, error } = await supabase.from("daily_logs").insert([logToInsert]).select().single()
 
@@ -512,14 +529,12 @@ export async function addDailyLog(logData: {
 
       for (const material of logData.materials_used) {
         try {
-          console.log(
-            `Processing material: ${material.material_name} (ID: ${material.material_id}), Quantity: ${material.quantity}`,
-          )
+          console.log(`Processing material: ${material.material_id}, Quantity: ${material.quantity}`)
 
           // Get current stock
           const { data: currentMaterial, error: fetchError } = await supabase
             .from("materials")
-            .select("current_stock, name")
+            .select("current_stock")
             .eq("id", material.material_id)
             .single()
 
@@ -530,7 +545,7 @@ export async function addDailyLog(logData: {
 
           if (currentMaterial) {
             const newStock = Math.max(0, currentMaterial.current_stock - material.quantity)
-            console.log(`Updating stock for ${currentMaterial.name}: ${currentMaterial.current_stock} -> ${newStock}`)
+            console.log(`Updating stock for ${material.material_id}: ${currentMaterial.current_stock} -> ${newStock}`)
 
             // Update material stock
             const { error: updateError } = await supabase
@@ -543,7 +558,7 @@ export async function addDailyLog(logData: {
               continue
             }
 
-            console.log(`Successfully updated stock for ${currentMaterial.name}`)
+            console.log(`Successfully updated stock for ${material.material_id}`)
 
             // Record transaction
             const transactionResult = await addMaterialTransaction({
@@ -587,7 +602,7 @@ export async function addDailyLog(logData: {
   }
 }
 
-export async function updateDailyLog(id: number, updates: Partial<DailyLog>): Promise<DailyLog | null> {
+export async function updateDailyLog(id: string, updates: Partial<DailyLog>): Promise<DailyLog | null> {
   try {
     const supabase = createClientClient()
     if (!supabase) {
@@ -600,11 +615,6 @@ export async function updateDailyLog(id: number, updates: Partial<DailyLog>): Pr
     if (updates.work_completed !== undefined) {
       ;(updateData as any).work_description = updates.work_completed
       delete (updateData as any).work_completed
-    }
-
-    // Ensure hours_worked has a default value
-    if (updateData.hours_worked === undefined) {
-      updateData.hours_worked = 0
     }
 
     const { data, error } = await supabase.from("daily_logs").update(updateData).eq("id", id).select().single()
@@ -627,14 +637,14 @@ export async function updateDailyLog(id: number, updates: Partial<DailyLog>): Pr
           try {
             const { data: currentMaterial } = await supabase
               .from("materials")
-              .select("current_stock, name")
+              .select("current_stock")
               .eq("id", originalMaterial.material_id)
               .single()
 
             if (currentMaterial) {
               const restoredStock = currentMaterial.current_stock + originalMaterial.quantity
               console.log(
-                `Restoring stock for ${currentMaterial.name}: ${currentMaterial.current_stock} + ${originalMaterial.quantity} = ${restoredStock}`,
+                `Restoring stock for ${originalMaterial.material_id}: ${currentMaterial.current_stock} + ${originalMaterial.quantity} = ${restoredStock}`,
               )
 
               await supabase
@@ -666,14 +676,14 @@ export async function updateDailyLog(id: number, updates: Partial<DailyLog>): Pr
         try {
           const { data: currentMaterial } = await supabase
             .from("materials")
-            .select("current_stock, name")
+            .select("current_stock")
             .eq("id", newMaterial.material_id)
             .single()
 
           if (currentMaterial) {
             const newStock = Math.max(0, currentMaterial.current_stock - newMaterial.quantity)
             console.log(
-              `Deducting stock for ${currentMaterial.name}: ${currentMaterial.current_stock} - ${newMaterial.quantity} = ${newStock}`,
+              `Deducting stock for ${newMaterial.material_id}: ${currentMaterial.current_stock} - ${newMaterial.quantity} = ${newStock}`,
             )
 
             await supabase.from("materials").update({ current_stock: newStock }).eq("id", newMaterial.material_id)
@@ -711,7 +721,7 @@ export async function updateDailyLog(id: number, updates: Partial<DailyLog>): Pr
   }
 }
 
-export async function deleteDailyLog(id: number): Promise<boolean> {
+export async function deleteDailyLog(id: string): Promise<boolean> {
   try {
     const supabase = createClientClient()
     if (!supabase) {
@@ -730,14 +740,14 @@ export async function deleteDailyLog(id: number): Promise<boolean> {
         try {
           const { data: currentMaterial } = await supabase
             .from("materials")
-            .select("current_stock, name")
+            .select("current_stock")
             .eq("id", material.material_id)
             .single()
 
           if (currentMaterial) {
             const restoredStock = currentMaterial.current_stock + material.quantity
             console.log(
-              `Restoring stock for ${currentMaterial.name}: ${currentMaterial.current_stock} + ${material.quantity} = ${restoredStock}`,
+              `Restoring stock for ${material.material_id}: ${currentMaterial.current_stock} + ${material.quantity} = ${restoredStock}`,
             )
 
             await supabase.from("materials").update({ current_stock: restoredStock }).eq("id", material.material_id)
@@ -755,7 +765,7 @@ export async function deleteDailyLog(id: number): Promise<boolean> {
               created_by: "admin@company.com",
             })
 
-            console.log(`Successfully restored stock for ${currentMaterial.name}`)
+            console.log(`Successfully restored stock for ${material.material_id}`)
           }
         } catch (error) {
           console.error("Error restoring material stock:", error)
@@ -781,13 +791,10 @@ export async function deleteDailyLog(id: number): Promise<boolean> {
 
 // Projects functions
 export async function getProjects(): Promise<Project[]> {
-  try {
-    const supabase = createClientClient()
-    if (!supabase) {
-      console.warn("Supabase client not available")
-      return []
-    }
+  const supabase = createClientClient()
+  if (!supabase) return []
 
+  try {
     const { data, error } = await supabase.from("projects").select("*").order("created_at", { ascending: false })
 
     if (error) {
@@ -824,7 +831,7 @@ export async function addProject(project: Omit<Project, "id" | "created_at" | "u
   }
 }
 
-export async function updateProject(id: number, updates: Partial<Project>): Promise<Project | null> {
+export async function updateProject(id: string, updates: Partial<Project>): Promise<Project | null> {
   try {
     const supabase = createClientClient()
     if (!supabase) {
@@ -846,7 +853,7 @@ export async function updateProject(id: number, updates: Partial<Project>): Prom
   }
 }
 
-export async function deleteProject(id: number): Promise<boolean> {
+export async function deleteProject(id: string): Promise<boolean> {
   try {
     const supabase = createClientClient()
     if (!supabase) {
@@ -870,13 +877,10 @@ export async function deleteProject(id: number): Promise<boolean> {
 
 // Workers functions
 export async function getWorkers(): Promise<Worker[]> {
-  try {
-    const supabase = createClientClient()
-    if (!supabase) {
-      console.warn("Supabase client not available")
-      return []
-    }
+  const supabase = createClientClient()
+  if (!supabase) return []
 
+  try {
     const { data, error } = await supabase.from("workers").select("*").order("created_at", { ascending: false })
 
     if (error) {
@@ -904,7 +908,6 @@ export async function addWorker(workerData: Omit<Worker, "id" | "created_at" | "
     const insertObj = {
       ...rest,
       role,
-      specialty: role,
       email: uniqueEmail,
     }
 
@@ -922,7 +925,7 @@ export async function addWorker(workerData: Omit<Worker, "id" | "created_at" | "
   }
 }
 
-export async function updateWorker(id: number, updates: Partial<Worker>): Promise<Worker | null> {
+export async function updateWorker(id: string, updates: Partial<Worker>): Promise<Worker | null> {
   try {
     const supabase = createClientClient()
     if (!supabase) {
@@ -931,7 +934,7 @@ export async function updateWorker(id: number, updates: Partial<Worker>): Promis
     }
 
     const { role, ...rest } = updates
-    const updateObj = role ? { ...rest, role, specialty: role } : rest
+    const updateObj = role ? { ...rest, role } : rest
 
     const { data, error } = await supabase.from("workers").update(updateObj).eq("id", id).select().single()
 
@@ -947,7 +950,7 @@ export async function updateWorker(id: number, updates: Partial<Worker>): Promis
   }
 }
 
-export async function deleteWorker(id: number): Promise<boolean> {
+export async function deleteWorker(id: string): Promise<boolean> {
   try {
     const supabase = createClientClient()
     if (!supabase) {
@@ -971,13 +974,10 @@ export async function deleteWorker(id: number): Promise<boolean> {
 
 // Roles functions
 export async function getRoles(): Promise<Role[]> {
-  try {
-    const supabase = createClientClient()
-    if (!supabase) {
-      console.warn("Supabase client not available")
-      return []
-    }
+  const supabase = createClientClient()
+  if (!supabase) return []
 
+  try {
     const { data, error } = await supabase.from("roles").select("*").order("name", { ascending: true })
 
     if (error) {
@@ -1000,11 +1000,7 @@ export async function addRole(name: string, description?: string): Promise<Role 
       return null
     }
 
-    const { data, error } = await supabase
-      .from("roles")
-      .insert([{ name, description, is_default: false }])
-      .select()
-      .single()
+    const { data, error } = await supabase.from("roles").insert([{ name, description }]).select().single()
 
     if (error) {
       console.error("Error adding role:", error)
@@ -1018,7 +1014,7 @@ export async function addRole(name: string, description?: string): Promise<Role 
   }
 }
 
-export async function deleteRole(id: number): Promise<boolean> {
+export async function deleteRole(id: string): Promise<boolean> {
   try {
     const supabase = createClientClient()
     if (!supabase) {
@@ -1042,13 +1038,10 @@ export async function deleteRole(id: number): Promise<boolean> {
 
 // Skills functions
 export async function getSkills(): Promise<Skill[]> {
-  try {
-    const supabase = createClientClient()
-    if (!supabase) {
-      console.warn("Supabase client not available")
-      return []
-    }
+  const supabase = createClientClient()
+  if (!supabase) return []
 
+  try {
     const { data, error } = await supabase.from("skills").select("*").order("name", { ascending: true })
 
     if (error) {
@@ -1071,11 +1064,7 @@ export async function addSkill(name: string, description?: string, category?: st
       return null
     }
 
-    const { data, error } = await supabase
-      .from("skills")
-      .insert([{ name, description, category, is_default: false }])
-      .select()
-      .single()
+    const { data, error } = await supabase.from("skills").insert([{ name, description, category }]).select().single()
 
     if (error) {
       console.error("Error adding skill:", error)
@@ -1089,7 +1078,7 @@ export async function addSkill(name: string, description?: string, category?: st
   }
 }
 
-export async function deleteSkill(id: number): Promise<boolean> {
+export async function deleteSkill(id: string): Promise<boolean> {
   try {
     const supabase = createClientClient()
     if (!supabase) {
@@ -1113,13 +1102,10 @@ export async function deleteSkill(id: number): Promise<boolean> {
 
 // Material Categories functions
 export async function getMaterialCategories(): Promise<MaterialCategory[]> {
-  try {
-    const supabase = createClientClient()
-    if (!supabase) {
-      console.warn("Supabase client not available")
-      return []
-    }
+  const supabase = createClientClient()
+  if (!supabase) return []
 
+  try {
     const { data, error } = await supabase.from("material_categories").select("*").order("name", { ascending: true })
 
     if (error) {
@@ -1142,11 +1128,7 @@ export async function addMaterialCategory(name: string, description?: string): P
       return null
     }
 
-    const { data, error } = await supabase
-      .from("material_categories")
-      .insert([{ name, description, is_default: false }])
-      .select()
-      .single()
+    const { data, error } = await supabase.from("material_categories").insert([{ name, description }]).select().single()
 
     if (error) {
       console.error("Error adding material category:", error)
@@ -1160,7 +1142,7 @@ export async function addMaterialCategory(name: string, description?: string): P
   }
 }
 
-export async function deleteMaterialCategory(id: number): Promise<boolean> {
+export async function deleteMaterialCategory(id: string): Promise<boolean> {
   try {
     const supabase = createClientClient()
     if (!supabase) {
@@ -1184,13 +1166,10 @@ export async function deleteMaterialCategory(id: number): Promise<boolean> {
 
 // Material Locations functions
 export async function getMaterialLocations(): Promise<MaterialLocation[]> {
-  try {
-    const supabase = createClientClient()
-    if (!supabase) {
-      console.warn("Supabase client not available")
-      return []
-    }
+  const supabase = createClientClient()
+  if (!supabase) return []
 
+  try {
     const { data, error } = await supabase.from("material_locations").select("*").order("name", { ascending: true })
 
     if (error) {
@@ -1205,7 +1184,11 @@ export async function getMaterialLocations(): Promise<MaterialLocation[]> {
   }
 }
 
-export async function addMaterialLocation(name: string, description?: string): Promise<MaterialLocation | null> {
+export async function addMaterialLocation(
+  name: string,
+  description?: string,
+  address?: string,
+): Promise<MaterialLocation | null> {
   try {
     const supabase = createClientClient()
     if (!supabase) {
@@ -1215,7 +1198,7 @@ export async function addMaterialLocation(name: string, description?: string): P
 
     const { data, error } = await supabase
       .from("material_locations")
-      .insert([{ name, description, is_default: false }])
+      .insert([{ name, description, address }])
       .select()
       .single()
 
@@ -1231,7 +1214,7 @@ export async function addMaterialLocation(name: string, description?: string): P
   }
 }
 
-export async function deleteMaterialLocation(id: number): Promise<boolean> {
+export async function deleteMaterialLocation(id: string): Promise<boolean> {
   try {
     const supabase = createClientClient()
     if (!supabase) {

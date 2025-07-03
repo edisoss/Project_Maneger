@@ -1,8 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -16,7 +16,18 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogFooter,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   DropdownMenu,
@@ -40,6 +51,8 @@ import {
   Loader2,
   UserPlus,
   Crown,
+  Edit,
+  Trash2,
 } from "lucide-react"
 import { createClientClient } from "@/lib/supabase-client"
 import {
@@ -53,6 +66,8 @@ import {
   getMaterialLocations,
   getProfiles,
   addProfile,
+  updateProfile,
+  deleteProfile,
 } from "@/lib/database"
 import type {
   Project,
@@ -69,17 +84,20 @@ import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
 import type { User } from "@supabase/supabase-js"
 
+// Import tab components
 import ProjectsTab from "./projects-tab"
 import WorkersTab from "./workers-tab"
 import MaterialsTab from "./materials-tab"
 import DailyLogsTab from "./daily-logs-tab"
 import RecentActivities from "./recent-activities"
+import type { Activity as ActivityType } from "./recent-activities"
 
 interface DashboardContentProps {
   user: User
 }
 
 export default function DashboardContent({ user }: DashboardContentProps) {
+  // State for all data
   const [projects, setProjects] = useState<Project[]>([])
   const [workers, setWorkers] = useState<Worker[]>([])
   const [materials, setMaterials] = useState<Material[]>([])
@@ -89,20 +107,35 @@ export default function DashboardContent({ user }: DashboardContentProps) {
   const [materialCategories, setMaterialCategories] = useState<MaterialCategory[]>([])
   const [materialLocations, setMaterialLocations] = useState<MaterialLocation[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
-  const [activities, setActivities] = useState<any[]>([])
+  const [activities, setActivities] = useState<ActivityType[]>([])
   const [loading, setLoading] = useState(true)
   const [isAdmin, setIsAdmin] = useState(true) // Default to true for first user
+
+  // User management states
   const [showAddUserDialog, setShowAddUserDialog] = useState(false)
+  const [showEditUserDialog, setShowEditUserDialog] = useState(false)
+  const [showDeleteUserDialog, setShowDeleteUserDialog] = useState(false)
+  const [selectedUser, setSelectedUser] = useState<Profile | null>(null)
   const [newUserData, setNewUserData] = useState({
     email: "",
     full_name: "",
     role: "user",
+    password: "",
+  })
+  const [editUserData, setEditUserData] = useState({
+    email: "",
+    full_name: "",
+    role: "user",
+    password: "",
   })
   const [creatingUser, setCreatingUser] = useState(false)
+  const [updatingUser, setUpdatingUser] = useState(false)
+  const [deletingUser, setDeletingUser] = useState(false)
 
   const { toast } = useToast()
   const router = useRouter()
 
+  // Load all data on component mount
   useEffect(() => {
     loadAllData()
   }, [])
@@ -156,8 +189,8 @@ export default function DashboardContent({ user }: DashboardContentProps) {
       setMaterialLocations(locationsData)
       setProfiles(profilesData)
 
-      // Generate activities from loaded data
-      generateActivities(projectsData, workersData, materialsData, dailyLogsData)
+      // Generate activities from loaded data with real timestamps
+      generateActivitiesFromData(projectsData, workersData, materialsData, dailyLogsData, profilesData)
     } catch (error) {
       console.error("Error loading data:", error)
       toast({
@@ -170,70 +203,101 @@ export default function DashboardContent({ user }: DashboardContentProps) {
     }
   }
 
-  const generateActivities = (
+  const generateActivitiesFromData = (
     projectsData: Project[],
     workersData: Worker[],
     materialsData: Material[],
     dailyLogsData: DailyLog[],
+    profilesData: Profile[],
   ) => {
     const newActivities: any[] = []
 
-    // Add recent projects
-    projectsData.slice(0, 2).forEach((project, index) => {
-      newActivities.push({
-        id: `project-${project.id}`,
-        type: "project",
-        title: "Project Created",
-        description: `${project.name} project was created`,
-        timestamp: new Date(Date.now() - index * 2 * 60 * 60 * 1000).toISOString(),
-        icon: Building2,
-        variant: "default",
+    // Add recent projects (using actual created_at timestamps)
+    projectsData
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 3)
+      .forEach((project) => {
+        newActivities.push({
+          id: `project-${project.id}`,
+          type: "project",
+          title: "Project Created",
+          description: `${project.name} project was created`,
+          timestamp: project.created_at,
+          icon: Building2,
+          variant: "default",
+        })
       })
-    })
 
-    // Add recent workers
-    workersData.slice(0, 2).forEach((worker, index) => {
-      newActivities.push({
-        id: `worker-${worker.id}`,
-        type: "worker",
-        title: "Worker Added",
-        description: `${worker.name} joined as ${worker.role}`,
-        timestamp: new Date(Date.now() - (index + 2) * 2 * 60 * 60 * 1000).toISOString(),
-        icon: Users,
-        variant: "default",
+    // Add recent workers (using actual created_at timestamps)
+    workersData
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 3)
+      .forEach((worker) => {
+        newActivities.push({
+          id: `worker-${worker.id}`,
+          type: "worker",
+          title: "Worker Added",
+          description: `${worker.name} joined as ${worker.role}`,
+          timestamp: worker.created_at,
+          icon: Users,
+          variant: "default",
+        })
       })
-    })
 
-    // Add material alerts
+    // Add recent profiles (using actual created_at timestamps)
+    profilesData
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 2)
+      .forEach((profile) => {
+        newActivities.push({
+          id: `profile-${profile.id}`,
+          type: "user",
+          title: "User Created",
+          description: `${profile.full_name} was added to the system`,
+          timestamp: profile.created_at,
+          icon: UserPlus,
+          variant: "default",
+        })
+      })
+
+    // Add material alerts for low stock (using current timestamp)
     materialsData
       .filter((material) => material.current_stock <= material.min_stock)
-      .slice(0, 2)
-      .forEach((material, index) => {
+      .slice(0, 3)
+      .forEach((material) => {
         newActivities.push({
-          id: `material-${material.id}`,
+          id: `material-alert-${material.id}`,
           type: "material",
           title: "Low Stock Alert",
           description: `${material.name} is running low (${material.current_stock} ${material.unit} remaining)`,
-          timestamp: new Date(Date.now() - (index + 4) * 2 * 60 * 60 * 1000).toISOString(),
+          timestamp: new Date().toISOString(), // Current time for alerts
           icon: AlertTriangle,
           variant: "destructive",
         })
       })
 
-    // Add recent daily logs
-    dailyLogsData.slice(0, 2).forEach((log, index) => {
-      newActivities.push({
-        id: `log-${log.id}`,
-        type: "daily_log",
-        title: "Daily Log Submitted",
-        description: `${log.title} - ${log.status}`,
-        timestamp: new Date(Date.now() - (index + 6) * 2 * 60 * 60 * 1000).toISOString(),
-        icon: FileText,
-        variant: "secondary",
+    // Add recent daily logs (using actual created_at timestamps)
+    dailyLogsData
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 3)
+      .forEach((log) => {
+        newActivities.push({
+          id: `log-${log.id}`,
+          type: "daily_log",
+          title: "Daily Log Submitted",
+          description: `${log.title} - ${log.status}`,
+          timestamp: log.created_at,
+          icon: FileText,
+          variant: "secondary",
+        })
       })
-    })
 
-    setActivities(newActivities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()))
+    // Sort all activities by timestamp (most recent first) and limit to 10
+    const sortedActivities = newActivities
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 10)
+
+    setActivities(sortedActivities)
   }
 
   const logActivity = (activity: any) => {
@@ -256,7 +320,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
   const handleAddUser = async () => {
     try {
       setCreatingUser(true)
-      if (!newUserData.email || !newUserData.full_name) {
+      if (!newUserData.email || !newUserData.full_name || !newUserData.password) {
         toast({ title: "Error", description: "Please fill in all required fields", variant: "destructive" })
         return
       }
@@ -265,15 +329,17 @@ export default function DashboardContent({ user }: DashboardContentProps) {
         email: newUserData.email,
         full_name: newUserData.full_name,
         role: newUserData.role,
+        password: newUserData.password,
         is_admin: newUserData.role === "admin",
       })
 
       if (newProfile) {
-        setProfiles([...profiles, newProfile])
+        setProfiles([newProfile, ...profiles]) // Add to beginning for immediate display
         setShowAddUserDialog(false)
-        setNewUserData({ email: "", full_name: "", role: "user" })
+        setNewUserData({ email: "", full_name: "", role: "user", password: "" })
         toast({ title: "Success", description: "User created successfully!" })
 
+        // Add real-time activity
         logActivity({
           type: "user",
           title: "User Created",
@@ -290,6 +356,93 @@ export default function DashboardContent({ user }: DashboardContentProps) {
     }
   }
 
+  const handleEditUser = (profile: Profile) => {
+    setSelectedUser(profile)
+    setEditUserData({
+      email: profile.email,
+      full_name: profile.full_name,
+      role: profile.role,
+      password: "", // Don't pre-fill password
+    })
+    setShowEditUserDialog(true)
+  }
+
+  const handleUpdateUser = async () => {
+    if (!selectedUser) return
+
+    try {
+      setUpdatingUser(true)
+      if (!editUserData.email || !editUserData.full_name) {
+        toast({ title: "Error", description: "Please fill in all required fields", variant: "destructive" })
+        return
+      }
+
+      const updatedProfile = await updateProfile(selectedUser.id, {
+        email: editUserData.email,
+        full_name: editUserData.full_name,
+        role: editUserData.role,
+        password: editUserData.password || undefined, // Only send password if provided
+        is_admin: editUserData.role === "admin",
+      })
+
+      if (updatedProfile) {
+        setProfiles(profiles.map((p) => (p.id === selectedUser.id ? updatedProfile : p)))
+        setShowEditUserDialog(false)
+        setSelectedUser(null)
+        toast({ title: "Success", description: "User updated successfully!" })
+
+        // Add real-time activity
+        logActivity({
+          type: "user",
+          title: "User Updated",
+          description: `User ${editUserData.full_name} was updated`,
+          icon: Edit,
+          variant: "default",
+        })
+      }
+    } catch (error) {
+      console.error("Error updating user:", error)
+      toast({ title: "Error", description: "Failed to update user", variant: "destructive" })
+    } finally {
+      setUpdatingUser(false)
+    }
+  }
+
+  const handleDeleteUser = (profile: Profile) => {
+    setSelectedUser(profile)
+    setShowDeleteUserDialog(true)
+  }
+
+  const confirmDeleteUser = async () => {
+    if (!selectedUser) return
+
+    try {
+      setDeletingUser(true)
+      const success = await deleteProfile(selectedUser.id)
+
+      if (success) {
+        setProfiles(profiles.filter((p) => p.id !== selectedUser.id))
+        setShowDeleteUserDialog(false)
+        setSelectedUser(null)
+        toast({ title: "Success", description: "User deleted successfully!" })
+
+        // Add real-time activity
+        logActivity({
+          type: "user",
+          title: "User Deleted",
+          description: `User ${selectedUser.full_name} was deleted`,
+          icon: Trash2,
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("Error deleting user:", error)
+      toast({ title: "Error", description: "Failed to delete user", variant: "destructive" })
+    } finally {
+      setDeletingUser(false)
+    }
+  }
+
   // Calculate overview statistics
   const totalProjects = projects.length
   const activeProjects = projects.filter((p) => p.status === "Active").length
@@ -303,6 +456,36 @@ export default function DashboardContent({ user }: DashboardContentProps) {
     weekAgo.setDate(weekAgo.getDate() - 7)
     return logDate >= weekAgo
   }).length
+
+  // Chart data
+  const projectStatusData = [
+    { name: "Active", value: projects.filter((p) => p.status === "Active").length, color: "#10b981" },
+    { name: "Completed", value: projects.filter((p) => p.status === "Completed").length, color: "#3b82f6" },
+    { name: "On Hold", value: projects.filter((p) => p.status === "On Hold").length, color: "#f59e0b" },
+    { name: "Cancelled", value: projects.filter((p) => p.status === "Cancelled").length, color: "#ef4444" },
+  ]
+
+  const workerRoleData = roles.map((role) => ({
+    name: role.name,
+    count: workers.filter((w) => w.role === role.name).length,
+  }))
+
+  const materialStockData = [
+    { name: "In Stock", value: materials.filter((m) => m.current_stock > m.min_stock).length, color: "#10b981" },
+    { name: "Low Stock", value: lowStockMaterials, color: "#f59e0b" },
+    { name: "Out of Stock", value: materials.filter((m) => m.current_stock <= 0).length, color: "#ef4444" },
+  ]
+
+  // Weekly activity data (mock data for demonstration)
+  const weeklyActivityData = [
+    { name: "Mon", logs: 12, materials: 8 },
+    { name: "Tue", logs: 19, materials: 12 },
+    { name: "Wed", logs: 15, materials: 10 },
+    { name: "Thu", logs: 22, materials: 15 },
+    { name: "Fri", logs: 18, materials: 11 },
+    { name: "Sat", logs: 8, materials: 5 },
+    { name: "Sun", logs: 5, materials: 3 },
+  ]
 
   if (loading) {
     return (
@@ -376,6 +559,16 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                         />
                       </div>
                       <div>
+                        <Label htmlFor="password">Password *</Label>
+                        <Input
+                          id="password"
+                          type="password"
+                          placeholder="Enter password"
+                          value={newUserData.password}
+                          onChange={(e) => setNewUserData((prev) => ({ ...prev, password: e.target.value }))}
+                        />
+                      </div>
+                      <div>
                         <Label htmlFor="role">Role</Label>
                         <Select
                           value={newUserData.role}
@@ -386,12 +579,14 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="user">User</SelectItem>
+                            <SelectItem value="manager">Manager</SelectItem>
+                            <SelectItem value="supervisor">Supervisor</SelectItem>
                             <SelectItem value="admin">Admin</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
                     </div>
-                    <div className="flex justify-end space-x-2">
+                    <DialogFooter>
                       <Button variant="outline" onClick={() => setShowAddUserDialog(false)} disabled={creatingUser}>
                         Cancel
                       </Button>
@@ -405,7 +600,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                           "Create User"
                         )}
                       </Button>
-                    </div>
+                    </DialogFooter>
                   </DialogContent>
                 </Dialog>
               )}
@@ -574,7 +769,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                     <ActivityIcon className="h-5 w-5 mr-2 text-blue-600" />
                     Recent Activities
                   </CardTitle>
-                  <CardDescription>Latest updates from your construction projects</CardDescription>
+                  <CardDescription>Latest updates from your construction projects (live data)</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <ScrollArea className="h-[400px]">
@@ -613,36 +808,65 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                     </div>
 
                     <div className="space-y-2">
-                      <h4 className="font-medium text-gray-900">System Users ({profiles.length})</h4>
-                      <div className="space-y-2 max-h-32 overflow-y-auto">
-                        {profiles.slice(0, 3).map((profile) => (
-                          <div key={profile.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-                            <div className="flex items-center space-x-2">
-                              <Avatar className="h-6 w-6">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-medium text-gray-900">System Users ({profiles.length})</h4>
+                        <Button
+                          onClick={() => setShowAddUserDialog(true)}
+                          size="sm"
+                          className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                        >
+                          <UserPlus className="h-3 w-3 mr-1" />
+                          Add
+                        </Button>
+                      </div>
+
+                      <div className="space-y-2 max-h-64 overflow-y-auto">
+                        {profiles.map((profile) => (
+                          <div
+                            key={profile.id}
+                            className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                          >
+                            <div className="flex items-center space-x-2 flex-1 min-w-0">
+                              <Avatar className="h-6 w-6 flex-shrink-0">
                                 <AvatarFallback className="text-xs bg-blue-100 text-blue-700">
                                   {profile.full_name?.charAt(0) || "U"}
                                 </AvatarFallback>
                               </Avatar>
-                              <div>
-                                <p className="text-sm font-medium">{profile.full_name}</p>
-                                <p className="text-xs text-gray-500">{profile.email}</p>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium truncate">{profile.full_name}</p>
+                                <div className="flex items-center space-x-2">
+                                  <p className="text-xs text-gray-500 truncate">{profile.email}</p>
+                                  <Badge
+                                    variant={profile.is_admin ? "default" : "secondary"}
+                                    className="text-xs flex-shrink-0"
+                                  >
+                                    {profile.is_admin ? "Admin" : profile.role}
+                                  </Badge>
+                                </div>
                               </div>
                             </div>
-                            <Badge variant={profile.is_admin ? "default" : "secondary"} className="text-xs">
-                              {profile.is_admin ? "Admin" : "User"}
-                            </Badge>
+                            <div className="flex space-x-1 flex-shrink-0">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleEditUser(profile)}
+                                className="h-7 w-7 p-0"
+                              >
+                                <Edit className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleDeleteUser(profile)}
+                                className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:border-red-300"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
                           </div>
                         ))}
                       </div>
                     </div>
-
-                    <Button
-                      onClick={() => setShowAddUserDialog(true)}
-                      className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
-                    >
-                      <UserPlus className="h-4 w-4 mr-2" />
-                      Add New User
-                    </Button>
                   </CardContent>
                 </Card>
               )}
@@ -689,6 +913,108 @@ export default function DashboardContent({ user }: DashboardContentProps) {
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* Edit User Dialog */}
+      <Dialog open={showEditUserDialog} onOpenChange={setShowEditUserDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit User</DialogTitle>
+            <DialogDescription>Update user information and permissions</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="edit_email">Email Address *</Label>
+              <Input
+                id="edit_email"
+                type="email"
+                placeholder="user@example.com"
+                value={editUserData.email}
+                onChange={(e) => setEditUserData((prev) => ({ ...prev, email: e.target.value }))}
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit_full_name">Full Name *</Label>
+              <Input
+                id="edit_full_name"
+                placeholder="Enter full name"
+                value={editUserData.full_name}
+                onChange={(e) => setEditUserData((prev) => ({ ...prev, full_name: e.target.value }))}
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit_password">Password (leave blank to keep current)</Label>
+              <Input
+                id="edit_password"
+                type="password"
+                placeholder="Enter new password"
+                value={editUserData.password}
+                onChange={(e) => setEditUserData((prev) => ({ ...prev, password: e.target.value }))}
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit_role">Role</Label>
+              <Select
+                value={editUserData.role}
+                onValueChange={(value) => setEditUserData((prev) => ({ ...prev, role: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="user">User</SelectItem>
+                  <SelectItem value="manager">Manager</SelectItem>
+                  <SelectItem value="supervisor">Supervisor</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditUserDialog(false)} disabled={updatingUser}>
+              Cancel
+            </Button>
+            <Button onClick={handleUpdateUser} disabled={updatingUser}>
+              {updatingUser ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Updating...
+                </>
+              ) : (
+                "Update User"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete User Dialog */}
+      <AlertDialog open={showDeleteUserDialog} onOpenChange={setShowDeleteUserDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete User</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete {selectedUser?.full_name}? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingUser}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteUser}
+              disabled={deletingUser}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {deletingUser ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete User"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
