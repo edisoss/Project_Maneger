@@ -15,7 +15,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog"
 import {
@@ -52,6 +51,7 @@ import {
   Crown,
   Edit,
   Trash2,
+  Eye,
 } from "lucide-react"
 import { createClientClient } from "@/lib/supabase-client"
 import {
@@ -110,7 +110,8 @@ export default function DashboardContent({ user }: DashboardContentProps) {
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [activities, setActivities] = useState<Activity[]>([])
   const [loading, setLoading] = useState(true)
-  const [isAdmin, setIsAdmin] = useState(true) // Default to true for first user
+  const [isAdmin, setIsAdmin] = useState(false) // Default to false, check from profile
+  const [userProfile, setUserProfile] = useState<Profile | null>(null)
 
   // User management states
   const [showAddUserDialog, setShowAddUserDialog] = useState(false)
@@ -145,6 +146,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
     try {
       setLoading(true)
       console.log("Loading all data...")
+      console.log("Current user:", { id: user.id, email: user.email })
 
       const [
         projectsData,
@@ -194,17 +196,75 @@ export default function DashboardContent({ user }: DashboardContentProps) {
       setProfiles(profilesData)
       setActivities(activitiesData)
 
-      // Add low stock alerts to activities if any
-      const lowStockMaterials = materialsData.filter((m) => m.current_stock <= m.min_stock)
-      if (lowStockMaterials.length > 0) {
-        for (const material of lowStockMaterials.slice(0, 3)) {
-          await logActivity({
-            type: "material",
-            title: "Low Stock Alert",
-            description: `${material.name} is running low (${material.current_stock} ${material.unit} remaining)`,
-            icon: "AlertTriangle",
+      // Debug: Log all profiles to see what we have
+      console.log(
+        "All profiles:",
+        profilesData.map((p) => ({ id: p.id, email: p.email, role: p.role, is_admin: p.is_admin })),
+      )
+
+      // Check if current user is admin - try multiple matching strategies
+      let currentUserProfile = null
+
+      // Strategy 1: Match by email (most reliable)
+      if (user.email) {
+        currentUserProfile = profilesData.find((p) => p.email?.toLowerCase() === user.email?.toLowerCase())
+        console.log("Email match attempt:", { userEmail: user.email, found: !!currentUserProfile })
+      }
+
+      // Strategy 2: Match by auth user ID (if profile.id matches auth.users.id)
+      if (!currentUserProfile && user.id) {
+        currentUserProfile = profilesData.find((p) => p.id === user.id)
+        console.log("ID match attempt:", { userId: user.id, found: !!currentUserProfile })
+      }
+
+      if (currentUserProfile) {
+        setUserProfile(currentUserProfile)
+        const adminStatus = currentUserProfile.is_admin === true || currentUserProfile.role === "admin"
+        setIsAdmin(adminStatus)
+        console.log("User profile found:", {
+          id: currentUserProfile.id,
+          email: currentUserProfile.email,
+          role: currentUserProfile.role,
+          is_admin: currentUserProfile.is_admin,
+          computed_admin_status: adminStatus,
+        })
+      } else {
+        // If no profile found, check if this is the first user (should be admin)
+        const shouldBeAdmin = profilesData.length === 0
+        setIsAdmin(shouldBeAdmin)
+        console.log(
+          "No user profile found. Profiles count:",
+          profilesData.length,
+          "Setting admin status to:",
+          shouldBeAdmin,
+        )
+
+        if (profilesData.length > 0) {
+          // There are profiles but current user is not found - this might be an issue
+          console.warn(
+            "User not found in profiles table but profiles exist. This user might need to be added to the profiles table.",
+          )
+          toast({
+            title: "Profile Not Found",
+            description: "Your user profile was not found. Please contact an administrator to set up your account.",
             variant: "destructive",
           })
+        }
+      }
+
+      // Add low stock alerts to activities if any (only for admins)
+      if (isAdmin) {
+        const lowStockMaterials = materialsData.filter((m) => m.current_stock <= m.min_stock)
+        if (lowStockMaterials.length > 0) {
+          for (const material of lowStockMaterials.slice(0, 3)) {
+            await logActivity({
+              type: "material",
+              title: "Low Stock Alert",
+              description: `${material.name} is running low (${material.current_stock} ${material.unit} remaining)`,
+              icon: "AlertTriangle",
+              variant: "destructive",
+            })
+          }
         }
       }
     } catch (error) {
@@ -253,10 +313,10 @@ export default function DashboardContent({ user }: DashboardContentProps) {
     try {
       console.log("Logging activity:", activity)
 
-      // Save to database
+      // Save to database - use user.id instead of user.email
       const savedActivity = await addActivity({
         ...activity,
-        created_by: user.email || "system",
+        created_by: user.id || null, // Use UUID instead of email
       })
 
       if (savedActivity) {
@@ -426,36 +486,6 @@ export default function DashboardContent({ user }: DashboardContentProps) {
     return logDate >= weekAgo
   }).length
 
-  // Chart data
-  const projectStatusData = [
-    { name: "Active", value: projects.filter((p) => p.status === "Active").length, color: "#10b981" },
-    { name: "Completed", value: projects.filter((p) => p.status === "Completed").length, color: "#3b82f6" },
-    { name: "On Hold", value: projects.filter((p) => p.status === "On Hold").length, color: "#f59e0b" },
-    { name: "Cancelled", value: projects.filter((p) => p.status === "Cancelled").length, color: "#ef4444" },
-  ]
-
-  const workerRoleData = roles.map((role) => ({
-    name: role.name,
-    count: workers.filter((w) => w.role === role.name).length,
-  }))
-
-  const materialStockData = [
-    { name: "In Stock", value: materials.filter((m) => m.current_stock > m.min_stock).length, color: "#10b981" },
-    { name: "Low Stock", value: lowStockMaterials, color: "#f59e0b" },
-    { name: "Out of Stock", value: materials.filter((m) => m.current_stock <= 0).length, color: "#ef4444" },
-  ]
-
-  // Weekly activity data (mock data for demonstration)
-  const weeklyActivityData = [
-    { name: "Mon", logs: 12, materials: 8 },
-    { name: "Tue", logs: 19, materials: 12 },
-    { name: "Wed", logs: 15, materials: 10 },
-    { name: "Thu", logs: 22, materials: 15 },
-    { name: "Fri", logs: 18, materials: 11 },
-    { name: "Sat", logs: 8, materials: 5 },
-    { name: "Sun", logs: 5, materials: 3 },
-  ]
-
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
@@ -488,98 +518,28 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                   <h1 className="text-xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
                     Construction Manager
                   </h1>
-                  <p className="text-sm text-gray-500">Project Management Dashboard</p>
+                  <p className="text-sm text-gray-500">
+                    Project Management Dashboard {!isAdmin && "(View Only)"}
+                    {userProfile && (
+                      <span className="ml-2 text-xs bg-gray-100 px-2 py-1 rounded">{userProfile.full_name}</span>
+                    )}
+                  </p>
                 </div>
               </div>
             </div>
 
             <div className="flex items-center space-x-4">
-              {isAdmin && (
-                <Dialog open={showAddUserDialog} onOpenChange={setShowAddUserDialog}>
-                  <DialogTrigger asChild>
-                    <Button variant="outline" size="sm" className="bg-white/50 hover:bg-white/80">
-                      <UserPlus className="h-4 w-4 mr-2" />
-                      Add User
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Add New User</DialogTitle>
-                      <DialogDescription>Create a new user account for the system</DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <div>
-                        <Label htmlFor="email">Email Address *</Label>
-                        <Input
-                          id="email"
-                          type="email"
-                          placeholder="user@example.com"
-                          value={newUserData.email}
-                          onChange={(e) => setNewUserData((prev) => ({ ...prev, email: e.target.value }))}
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="full_name">Full Name *</Label>
-                        <Input
-                          id="full_name"
-                          placeholder="Enter full name"
-                          value={newUserData.full_name}
-                          onChange={(e) => setNewUserData((prev) => ({ ...prev, full_name: e.target.value }))}
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="password">Password *</Label>
-                        <Input
-                          id="password"
-                          type="password"
-                          placeholder="Enter password"
-                          value={newUserData.password}
-                          onChange={(e) => setNewUserData((prev) => ({ ...prev, password: e.target.value }))}
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="role">Role</Label>
-                        <Select
-                          value={newUserData.role}
-                          onValueChange={(value) => setNewUserData((prev) => ({ ...prev, role: value }))}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select role" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="user">User</SelectItem>
-                            <SelectItem value="manager">Manager</SelectItem>
-                            <SelectItem value="supervisor">Supervisor</SelectItem>
-                            <SelectItem value="admin">Admin</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    <DialogFooter>
-                      <Button variant="outline" onClick={() => setShowAddUserDialog(false)} disabled={creatingUser}>
-                        Cancel
-                      </Button>
-                      <Button onClick={handleAddUser} disabled={creatingUser}>
-                        {creatingUser ? (
-                          <>
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            Creating...
-                          </>
-                        ) : (
-                          "Create User"
-                        )}
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-              )}
+              <Button variant="outline" size="sm" className="bg-white/50 hover:bg-white/80" onClick={handleSignOut}>
+                <LogOut className="h-4 w-4 mr-2" />
+                Log Out
+              </Button>
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="relative h-10 w-10 rounded-full bg-white/50 hover:bg-white/80">
                     <Avatar className="h-10 w-10">
                       <AvatarFallback className="bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-semibold">
-                        {user.email?.charAt(0).toUpperCase() || "U"}
+                        {userProfile?.full_name?.charAt(0).toUpperCase() || user.email?.charAt(0).toUpperCase() || "U"}
                       </AvatarFallback>
                     </Avatar>
                   </Button>
@@ -588,10 +548,14 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                   <DropdownMenuLabel className="font-normal">
                     <div className="flex flex-col space-y-1">
                       <p className="text-sm font-medium leading-none flex items-center">
-                        {user.email}
+                        {userProfile?.full_name || user.email}
                         {isAdmin && <Crown className="h-3 w-3 ml-2 text-yellow-500" />}
+                        {!isAdmin && <Eye className="h-3 w-3 ml-2 text-gray-500" />}
                       </p>
-                      <p className="text-xs leading-none text-muted-foreground">{isAdmin ? "Administrator" : "User"}</p>
+                      <p className="text-xs leading-none text-muted-foreground">{userProfile?.email || user.email}</p>
+                      <p className="text-xs leading-none text-muted-foreground">
+                        {isAdmin ? "Administrator" : "User (View Only)"}
+                      </p>
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
@@ -659,14 +623,21 @@ export default function DashboardContent({ user }: DashboardContentProps) {
               <div className="relative z-10">
                 <div className="flex items-center justify-between">
                   <div className="space-y-2">
-                    <h2 className="text-3xl font-bold">Welcome back!</h2>
+                    <h2 className="text-3xl font-bold">
+                      Welcome back{userProfile ? `, ${userProfile.full_name.split(" ")[0]}` : ""}!
+                    </h2>
                     <p className="text-blue-100 text-lg">
                       Here's what's happening with your construction projects today.
+                      {!isAdmin && " (View Only Mode)"}
                     </p>
                   </div>
                   <div className="hidden md:block">
                     <div className="w-24 h-24 bg-white/10 rounded-full flex items-center justify-center">
-                      <Building2 className="w-12 h-12 text-white" />
+                      {isAdmin ? (
+                        <Building2 className="w-12 h-12 text-white" />
+                      ) : (
+                        <Eye className="w-12 h-12 text-white" />
+                      )}
                     </div>
                   </div>
                 </div>
@@ -839,11 +810,71 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                   </CardContent>
                 </Card>
               )}
+
+              {/* View Only Notice for Standard Users */}
+              {!isAdmin && (
+                <Card className="bg-white/60 backdrop-blur-sm border-gray-200 hover:shadow-lg transition-all duration-200">
+                  <CardHeader>
+                    <CardTitle className="flex items-center">
+                      <Eye className="h-5 w-5 mr-2 text-gray-600" />
+                      View Only Access
+                      <Badge variant="secondary" className="ml-2 bg-gray-100 text-gray-800">
+                        User
+                      </Badge>
+                    </CardTitle>
+                    <CardDescription>Your current access level and permissions</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex items-center justify-between p-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg border border-gray-200">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-gray-500 rounded-full flex items-center justify-center">
+                          <Eye className="h-4 w-4 text-white" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900">Standard User</p>
+                          <p className="text-xs text-gray-700">View-only permissions</p>
+                        </div>
+                      </div>
+                      <Badge variant="outline" className="border-gray-300 text-gray-700">
+                        Active
+                      </Badge>
+                    </div>
+
+                    <div className="space-y-3">
+                      <h4 className="font-medium text-gray-900">What you can do:</h4>
+                      <ul className="space-y-2 text-sm text-gray-600">
+                        <li className="flex items-center">
+                          <Eye className="h-4 w-4 mr-2 text-green-500" />
+                          View all projects and their details
+                        </li>
+                        <li className="flex items-center">
+                          <Eye className="h-4 w-4 mr-2 text-green-500" />
+                          View worker information and schedules
+                        </li>
+                        <li className="flex items-center">
+                          <Eye className="h-4 w-4 mr-2 text-green-500" />
+                          View material inventory and usage
+                        </li>
+                        <li className="flex items-center">
+                          <Eye className="h-4 w-4 mr-2 text-green-500" />
+                          View daily logs and reports
+                        </li>
+                      </ul>
+
+                      <div className="pt-2 border-t border-gray-200">
+                        <p className="text-xs text-gray-500">
+                          Contact your administrator to request additional permissions.
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           </TabsContent>
 
           <TabsContent value="projects">
-            <ProjectsTab projects={projects} setProjects={setProjects} logActivity={logActivity} />
+            <ProjectsTab projects={projects} setProjects={setProjects} logActivity={logActivity} isAdmin={isAdmin} />
           </TabsContent>
 
           <TabsContent value="workers">
@@ -855,6 +886,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
               skills={skills}
               setSkills={setSkills}
               logActivity={logActivity}
+              isAdmin={isAdmin}
             />
           </TabsContent>
 
@@ -867,6 +899,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
               materialLocations={materialLocations}
               setMaterialLocations={setMaterialLocations}
               logActivity={logActivity}
+              isAdmin={isAdmin}
             />
           </TabsContent>
 
@@ -879,6 +912,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
               materials={materials}
               reloadMaterials={reloadMaterials}
               logActivity={logActivity}
+              isAdmin={isAdmin}
             />
           </TabsContent>
         </Tabs>
@@ -906,6 +940,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
               <Label htmlFor="edit_full_name">Full Name *</Label>
               <Input
                 id="edit_full_name"
+                type="text"
                 placeholder="Enter full name"
                 value={editUserData.full_name}
                 onChange={(e) => setEditUserData((prev) => ({ ...prev, full_name: e.target.value }))}
@@ -931,10 +966,10 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                   <SelectValue placeholder="Select role" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="user">User</SelectItem>
+                  <SelectItem value="user">User (View Only)</SelectItem>
                   <SelectItem value="manager">Manager</SelectItem>
                   <SelectItem value="supervisor">Supervisor</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="admin">Admin (Full Access)</SelectItem>
                 </SelectContent>
               </Select>
             </div>

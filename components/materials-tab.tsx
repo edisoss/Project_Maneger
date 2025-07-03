@@ -42,6 +42,7 @@ import {
   TrendingUp,
   TrendingDown,
   RotateCcw,
+  Eye,
 } from "lucide-react"
 import {
   addMaterial,
@@ -67,6 +68,7 @@ interface MaterialsTabProps {
   materialLocations: MaterialLocation[]
   setMaterialLocations: (locations: MaterialLocation[]) => void
   logActivity: (activity: Omit<Activity, "id" | "timestamp">) => void
+  isAdmin: boolean
 }
 
 export default function MaterialsTab({
@@ -77,12 +79,14 @@ export default function MaterialsTab({
   materialLocations = [],
   setMaterialLocations = () => {},
   logActivity,
+  isAdmin,
 }: MaterialsTabProps) {
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [showEditDialog, setShowEditDialog] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showCategoriesDialog, setShowCategoriesDialog] = useState(false)
   const [showHistoryDialog, setShowHistoryDialog] = useState(false)
+  const [showViewDialog, setShowViewDialog] = useState(false)
   const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null)
   const [materialTransactions, setMaterialTransactions] = useState<MaterialTransaction[]>([])
   const [saving, setSaving] = useState(false)
@@ -174,6 +178,11 @@ export default function MaterialsTab({
   }
 
   const handleAddMaterial = async () => {
+    if (!isAdmin) {
+      toast({ title: "Access Denied", description: "Only administrators can add materials", variant: "destructive" })
+      return
+    }
+
     try {
       setSaving(true)
 
@@ -231,7 +240,17 @@ export default function MaterialsTab({
     setShowEditDialog(true)
   }
 
+  const handleView = (material: Material) => {
+    setSelectedMaterial(material)
+    setShowViewDialog(true)
+  }
+
   const handleUpdateMaterial = async () => {
+    if (!isAdmin) {
+      toast({ title: "Access Denied", description: "Only administrators can edit materials", variant: "destructive" })
+      return
+    }
+
     if (!selectedMaterial) return
 
     try {
@@ -273,6 +292,10 @@ export default function MaterialsTab({
   }
 
   const handleDelete = (material: Material) => {
+    if (!isAdmin) {
+      toast({ title: "Access Denied", description: "Only administrators can delete materials", variant: "destructive" })
+      return
+    }
     setSelectedMaterial(material)
     setShowDeleteDialog(true)
   }
@@ -328,6 +351,15 @@ export default function MaterialsTab({
   }
 
   const handleAddCategory = async () => {
+    if (!isAdmin) {
+      toast({
+        title: "Access Denied",
+        description: "Only administrators can manage categories",
+        variant: "destructive",
+      })
+      return
+    }
+
     if (!newCategoryName.trim()) {
       toast({ title: "Error", description: "Please enter a category name", variant: "destructive" })
       return
@@ -362,6 +394,11 @@ export default function MaterialsTab({
   }
 
   const handleAddLocation = async () => {
+    if (!isAdmin) {
+      toast({ title: "Access Denied", description: "Only administrators can manage locations", variant: "destructive" })
+      return
+    }
+
     if (!newLocationName.trim()) {
       toast({ title: "Error", description: "Please enter a location name", variant: "destructive" })
       return
@@ -396,6 +433,15 @@ export default function MaterialsTab({
   }
 
   const handleDeleteCategory = async (categoryId: string) => {
+    if (!isAdmin) {
+      toast({
+        title: "Access Denied",
+        description: "Only administrators can manage categories",
+        variant: "destructive",
+      })
+      return
+    }
+
     // Check if category is in use
     const categoryToDelete = materialCategories.find((c) => c.id === categoryId)
     if (!categoryToDelete) return
@@ -432,6 +478,11 @@ export default function MaterialsTab({
   }
 
   const handleDeleteLocation = async (locationId: string) => {
+    if (!isAdmin) {
+      toast({ title: "Access Denied", description: "Only administrators can manage locations", variant: "destructive" })
+      return
+    }
+
     // Check if location is in use
     const locationToDelete = materialLocations.find((l) => l.id === locationId)
     if (!locationToDelete) return
@@ -468,160 +519,154 @@ export default function MaterialsTab({
   }
 
   const getStockStatus = (material: Material) => {
-    if (material.current_stock <= 0) return "out-of-stock"
-    if (material.current_stock <= material.min_stock) return "low-stock"
-    return "in-stock"
-  }
-
-  const getStockBadge = (material: Material) => {
-    const status = getStockStatus(material)
-    switch (status) {
-      case "out-of-stock":
-        return (
-          <Badge variant="destructive" className="flex items-center gap-1">
-            <AlertTriangle className="h-3 w-3" />
-            Out of Stock
-          </Badge>
-        )
-      case "low-stock":
-        return (
-          <Badge variant="secondary" className="flex items-center gap-1">
-            <AlertTriangle className="h-3 w-3" />
-            Low Stock
-          </Badge>
-        )
-      default:
-        return (
-          <Badge variant="default" className="flex items-center gap-1">
-            <CheckCircle className="h-3 w-3" />
-            In Stock
-          </Badge>
-        )
+    if (material.current_stock <= 0) {
+      return { status: "Out of Stock", variant: "destructive" as const, icon: AlertTriangle }
+    } else if (material.current_stock <= material.min_stock) {
+      return { status: "Low Stock", variant: "outline" as const, icon: AlertTriangle }
+    } else {
+      return { status: "In Stock", variant: "default" as const, icon: CheckCircle }
     }
   }
 
-  const getTransactionIcon = (type: string) => {
-    switch (type) {
-      case "added":
-        return <TrendingUp className="h-4 w-4 text-green-500" />
-      case "used":
-        return <TrendingDown className="h-4 w-4 text-red-500" />
-      case "adjusted":
-        return <RotateCcw className="h-4 w-4 text-blue-500" />
-      case "returned":
-        return <RotateCcw className="h-4 w-4 text-yellow-500" />
-      default:
-        return <Package className="h-4 w-4" />
-    }
-  }
-
-  // Filter materials
+  // Filter materials based on search and filters
   const filteredMaterials = materials.filter((material) => {
     const matchesSearch = material.name.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesCategory = filterCategory === "all" || material.category === filterCategory
-    const matchesStatus = filterStatus === "all" || getStockStatus(material) === filterStatus
+    const stockStatus = getStockStatus(material)
+    const matchesStatus =
+      filterStatus === "all" ||
+      (filterStatus === "in-stock" && stockStatus.status === "In Stock") ||
+      (filterStatus === "low-stock" && stockStatus.status === "Low Stock") ||
+      (filterStatus === "out-of-stock" && stockStatus.status === "Out of Stock")
+
     return matchesSearch && matchesCategory && matchesStatus
   })
 
   // Calculate statistics
   const totalMaterials = materials.length
-  const lowStockMaterials = materials.filter((m) => getStockStatus(m) === "low-stock").length
-  const outOfStockMaterials = materials.filter((m) => getStockStatus(m) === "out-of-stock").length
-  const activeMaterials = materials.filter((m) => m.status === "Active").length
+  const lowStockMaterials = materials.filter((m) => m.current_stock <= m.min_stock && m.current_stock > 0).length
+  const outOfStockMaterials = materials.filter((m) => m.current_stock <= 0).length
+  const totalCategories = materialCategories.length
 
   return (
-    <div className="space-y-6 px-6">
+    <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold">Materials Management</h2>
-          <p className="text-gray-600">Track and manage construction materials inventory</p>
+          <p className="text-gray-600">
+            Track and manage your construction materials inventory
+            {!isAdmin && " (View Only)"}
+          </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setShowCategoriesDialog(true)}>
-            <Settings className="h-4 w-4 mr-2" />
-            Manage Categories & Locations
-          </Button>
-          <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-            <DialogTrigger asChild>
-              <Button
-                onClick={() => {
-                  resetForm()
-                  setShowAddDialog(true)
-                }}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Material
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>Add New Material</DialogTitle>
-                <DialogDescription>Add a new material to your inventory</DialogDescription>
-              </DialogHeader>
-
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+          {isAdmin && (
+            <Button variant="outline" onClick={() => setShowCategoriesDialog(true)}>
+              <Settings className="h-4 w-4 mr-2" />
+              Manage Categories
+            </Button>
+          )}
+          {isAdmin && (
+            <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+              <DialogTrigger asChild>
+                <Button
+                  onClick={() => {
+                    resetForm()
+                    setShowAddDialog(true)
+                  }}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Material
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>Add New Material</DialogTitle>
+                  <DialogDescription>Add a new material to your inventory</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="name">Material Name *</Label>
+                      <Input
+                        id="name"
+                        placeholder="Enter material name"
+                        value={formData.name}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="category">Category *</Label>
+                      <Select
+                        value={formData.category}
+                        onValueChange={(value) => setFormData((prev) => ({ ...prev, category: value }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select category" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {materialCategories.map((category) => (
+                            <SelectItem key={category.id} value={category.name}>
+                              {category.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
                   <div>
-                    <Label htmlFor="name">Material Name *</Label>
-                    <Input
-                      id="name"
-                      placeholder="Enter material name"
-                      value={formData.name}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+                    <Label htmlFor="description">Description</Label>
+                    <Textarea
+                      id="description"
+                      placeholder="Enter material description"
+                      value={formData.description}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
+                      rows={3}
                     />
                   </div>
-
-                  <div>
-                    <Label htmlFor="unit">Unit *</Label>
-                    <Select
-                      value={formData.unit}
-                      onValueChange={(value) => setFormData((prev) => ({ ...prev, unit: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select unit" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {unitOptions.map((unit) => (
-                          <SelectItem key={unit} value={unit}>
-                            {unit}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <Label htmlFor="current_stock">Current Stock *</Label>
+                      <Input
+                        id="current_stock"
+                        type="number"
+                        min="0"
+                        value={formData.current_stock}
+                        onChange={(e) =>
+                          setFormData((prev) => ({ ...prev, current_stock: Number.parseFloat(e.target.value) || 0 }))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="min_stock">Minimum Stock *</Label>
+                      <Input
+                        id="min_stock"
+                        type="number"
+                        min="0"
+                        value={formData.min_stock}
+                        onChange={(e) =>
+                          setFormData((prev) => ({ ...prev, min_stock: Number.parseFloat(e.target.value) || 0 }))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="unit">Unit *</Label>
+                      <Select
+                        value={formData.unit}
+                        onValueChange={(value) => setFormData((prev) => ({ ...prev, unit: value }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select unit" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {unitOptions.map((unit) => (
+                            <SelectItem key={unit} value={unit}>
+                              {unit}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                </div>
-
-                <div>
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea
-                    id="description"
-                    placeholder="Enter material description (optional)"
-                    value={formData.description}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
-                    rows={3}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="category">Category *</Label>
-                    <Select
-                      value={formData.category}
-                      onValueChange={(value) => setFormData((prev) => ({ ...prev, category: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select category" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {materialCategories.map((category) => (
-                          <SelectItem key={category.id} value={category.name}>
-                            {category.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
                   <div>
                     <Label htmlFor="location">Location *</Label>
                     <Select
@@ -641,72 +686,24 @@ export default function MaterialsTab({
                     </Select>
                   </div>
                 </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="current_stock">Current Stock</Label>
-                    <Input
-                      id="current_stock"
-                      type="number"
-                      min="0"
-                      placeholder="0"
-                      value={formData.current_stock || ""}
-                      onChange={(e) =>
-                        setFormData((prev) => ({ ...prev, current_stock: Number.parseFloat(e.target.value) || 0 }))
-                      }
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="min_stock">Minimum Stock</Label>
-                    <Input
-                      id="min_stock"
-                      type="number"
-                      min="0"
-                      placeholder="0"
-                      value={formData.min_stock || ""}
-                      onChange={(e) =>
-                        setFormData((prev) => ({ ...prev, min_stock: Number.parseFloat(e.target.value) || 0 }))
-                      }
-                    />
-                  </div>
+                <div className="flex justify-end space-x-2">
+                  <Button variant="outline" onClick={() => setShowAddDialog(false)} disabled={saving}>
+                    Cancel
+                  </Button>
+                  <Button onClick={handleAddMaterial} disabled={saving}>
+                    {saving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Adding...
+                      </>
+                    ) : (
+                      "Add Material"
+                    )}
+                  </Button>
                 </div>
-
-                <div>
-                  <Label htmlFor="status">Status</Label>
-                  <Select
-                    value={formData.status}
-                    onValueChange={(value) => setFormData((prev) => ({ ...prev, status: value }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Active">Active</SelectItem>
-                      <SelectItem value="Inactive">Inactive</SelectItem>
-                      <SelectItem value="Discontinued">Discontinued</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="flex justify-end space-x-2">
-                <Button variant="outline" onClick={() => setShowAddDialog(false)} disabled={saving}>
-                  Cancel
-                </Button>
-                <Button onClick={handleAddMaterial} disabled={saving}>
-                  {saving ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Adding...
-                    </>
-                  ) : (
-                    "Add Material"
-                  )}
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+              </DialogContent>
+            </Dialog>
+          )}
         </div>
       </div>
 
@@ -722,7 +719,6 @@ export default function MaterialsTab({
             <p className="text-xs text-muted-foreground">Items in inventory</p>
           </CardContent>
         </Card>
-
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Low Stock</CardTitle>
@@ -730,10 +726,9 @@ export default function MaterialsTab({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-yellow-600">{lowStockMaterials}</div>
-            <p className="text-xs text-muted-foreground">Items need restocking</p>
+            <p className="text-xs text-muted-foreground">Need restocking</p>
           </CardContent>
         </Card>
-
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Out of Stock</CardTitle>
@@ -741,18 +736,17 @@ export default function MaterialsTab({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-600">{outOfStockMaterials}</div>
-            <p className="text-xs text-muted-foreground">Items unavailable</p>
+            <p className="text-xs text-muted-foreground">Urgent attention</p>
           </CardContent>
         </Card>
-
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Materials</CardTitle>
-            <CheckCircle className="h-4 w-4 text-green-500" />
+            <CardTitle className="text-sm font-medium">Categories</CardTitle>
+            <Package className="h-4 w-4 text-purple-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">{activeMaterials}</div>
-            <p className="text-xs text-muted-foreground">Currently in use</p>
+            <div className="text-2xl font-bold text-purple-600">{totalCategories}</div>
+            <p className="text-xs text-muted-foreground">Material types</p>
           </CardContent>
         </Card>
       </div>
@@ -760,282 +754,299 @@ export default function MaterialsTab({
       {/* Filters */}
       <Card>
         <CardHeader>
-          <CardTitle>Filters</CardTitle>
+          <CardTitle>Material Inventory</CardTitle>
+          <CardDescription>
+            {isAdmin ? "Manage your construction materials" : "View your construction materials"}
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex gap-4">
+          <div className="flex gap-4 mb-6">
             <div className="flex-1">
-              <Label htmlFor="search">Search Materials</Label>
               <div className="relative">
                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
-                  id="search"
-                  placeholder="Search by name..."
+                  placeholder="Search materials..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-8"
                 />
               </div>
             </div>
-
-            <div>
-              <Label htmlFor="filter-category">Category</Label>
-              <Select value={filterCategory} onValueChange={setFilterCategory}>
-                <SelectTrigger className="w-48">
-                  <SelectValue placeholder="All Categories" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Categories</SelectItem>
-                  {materialCategories.map((category) => (
-                    <SelectItem key={category.id} value={category.name}>
-                      {category.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label htmlFor="filter-status">Stock Status</Label>
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger className="w-48">
-                  <SelectValue placeholder="All Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="in-stock">In Stock</SelectItem>
-                  <SelectItem value="low-stock">Low Stock</SelectItem>
-                  <SelectItem value="out-of-stock">Out of Stock</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <Select value={filterCategory} onValueChange={setFilterCategory}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Filter by category" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Categories</SelectItem>
+                {materialCategories.map((category) => (
+                  <SelectItem key={category.id} value={category.name}>
+                    {category.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Filter by status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="in-stock">In Stock</SelectItem>
+                <SelectItem value="low-stock">Low Stock</SelectItem>
+                <SelectItem value="out-of-stock">Out of Stock</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Materials Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Materials Inventory</CardTitle>
-          <CardDescription>Manage your construction materials</CardDescription>
-        </CardHeader>
-        <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Description</TableHead>
+                <TableHead>Material</TableHead>
                 <TableHead>Category</TableHead>
+                <TableHead>Current Stock</TableHead>
+                <TableHead>Min Stock</TableHead>
                 <TableHead>Location</TableHead>
-                <TableHead>Stock</TableHead>
-                <TableHead>Unit</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredMaterials.map((material) => (
-                <TableRow key={material.id}>
-                  <TableCell>
-                    <div className="font-medium">{material.name}</div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="max-w-xs truncate text-sm text-gray-600">
-                      {(material as any).description || "No description"}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{material.category}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{material.location}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{material.current_stock}</span>
-                      {getStockBadge(material)}
-                    </div>
-                    <div className="text-sm text-gray-500">Min: {material.min_stock}</div>
-                  </TableCell>
-                  <TableCell>{material.unit}</TableCell>
-                  <TableCell>
-                    <Badge variant={material.status === "Active" ? "default" : "secondary"}>{material.status}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex space-x-2">
-                      <Button variant="outline" size="sm" onClick={() => handleViewHistory(material)}>
-                        <History className="h-3 w-3" />
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={() => handleEdit(material)}>
-                        <Edit className="h-3 w-3" />
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={() => handleDelete(material)}>
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {filteredMaterials.map((material) => {
+                const stockStatus = getStockStatus(material)
+                const StockIcon = stockStatus.icon
+                return (
+                  <TableRow key={material.id}>
+                    <TableCell>
+                      <div>
+                        <div className="font-medium">{material.name}</div>
+                        <div className="text-sm text-gray-500">{(material as any).description || "No description"}</div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{material.category}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="font-medium">
+                        {material.current_stock} {material.unit}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-sm text-gray-600">
+                        {material.min_stock} {material.unit}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-sm">{material.location}</div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={stockStatus.variant} className="flex items-center gap-1 w-fit">
+                        <StockIcon className="h-3 w-3" />
+                        {stockStatus.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex space-x-2">
+                        <Button variant="outline" size="sm" onClick={() => handleView(material)}>
+                          <Eye className="h-3 w-3" />
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => handleViewHistory(material)}>
+                          <History className="h-3 w-3" />
+                        </Button>
+                        {isAdmin && (
+                          <>
+                            <Button variant="outline" size="sm" onClick={() => handleEdit(material)}>
+                              <Edit className="h-3 w-3" />
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => handleDelete(material)}>
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
             </TableBody>
           </Table>
           {filteredMaterials.length === 0 && (
             <div className="text-center py-8">
-              <p className="text-gray-500">No materials found. Add your first material to get started!</p>
+              <p className="text-gray-500">
+                {materials.length === 0
+                  ? isAdmin
+                    ? "No materials found. Add your first material to get started!"
+                    : "No materials available to view."
+                  : "No materials match your current filters."}
+              </p>
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Material History Dialog */}
-      <Dialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+      {/* View Dialog */}
+      <Dialog open={showViewDialog} onOpenChange={setShowViewDialog}>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Material Usage History</DialogTitle>
-            <DialogDescription>Complete transaction history for {selectedMaterial?.name}</DialogDescription>
+            <DialogTitle>Material Details</DialogTitle>
+            <DialogDescription>View material information</DialogDescription>
           </DialogHeader>
-
-          <div className="space-y-4">
-            {loadingHistory ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                <span>Loading transaction history...</span>
+          {selectedMaterial && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm font-medium">Material Name</Label>
+                  <p className="text-sm text-gray-600">{selectedMaterial.name}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Category</Label>
+                  <div className="mt-1">
+                    <Badge variant="outline">{selectedMaterial.category}</Badge>
+                  </div>
+                </div>
               </div>
-            ) : materialTransactions.length > 0 ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Quantity</TableHead>
-                    <TableHead>Stock Change</TableHead>
-                    <TableHead>Project</TableHead>
-                    <TableHead>Notes</TableHead>
-                    <TableHead>Created By</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {materialTransactions.map((transaction) => (
-                    <TableRow key={transaction.id}>
-                      <TableCell>
-                        <div className="flex items-center">
-                          <Calendar className="h-4 w-4 mr-2 text-gray-400" />
-                          {new Date(transaction.created_at).toLocaleDateString()}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="flex items-center gap-1 w-fit">
-                          {getTransactionIcon(transaction.transaction_type)}
-                          {transaction.transaction_type}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <span className={transaction.transaction_type === "used" ? "text-red-600" : "text-green-600"}>
-                          {transaction.transaction_type === "used" ? "-" : "+"}
-                          {transaction.quantity}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          <div>
-                            {transaction.previous_stock} → {transaction.new_stock}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {transaction.project && <Badge variant="secondary">{transaction.project}</Badge>}
-                      </TableCell>
-                      <TableCell>
-                        <div className="max-w-xs truncate" title={transaction.notes || ""}>
-                          {transaction.notes}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm text-gray-500">{transaction.created_by}</div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            ) : (
-              <div className="text-center py-8">
-                <p className="text-gray-500">No transaction history found for this material.</p>
+              <div>
+                <Label className="text-sm font-medium">Description</Label>
+                <p className="text-sm text-gray-600">
+                  {(selectedMaterial as any).description || "No description provided"}
+                </p>
               </div>
-            )}
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <Label className="text-sm font-medium">Current Stock</Label>
+                  <p className="text-sm text-gray-600">
+                    {selectedMaterial.current_stock} {selectedMaterial.unit}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Minimum Stock</Label>
+                  <p className="text-sm text-gray-600">
+                    {selectedMaterial.min_stock} {selectedMaterial.unit}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Unit</Label>
+                  <p className="text-sm text-gray-600">{selectedMaterial.unit}</p>
+                </div>
+              </div>
+              <div>
+                <Label className="text-sm font-medium">Location</Label>
+                <p className="text-sm text-gray-600">{selectedMaterial.location}</p>
+              </div>
+              <div>
+                <Label className="text-sm font-medium">Status</Label>
+                <div className="mt-1">
+                  {(() => {
+                    const stockStatus = getStockStatus(selectedMaterial)
+                    const StockIcon = stockStatus.icon
+                    return (
+                      <Badge variant={stockStatus.variant} className="flex items-center gap-1 w-fit">
+                        <StockIcon className="h-3 w-3" />
+                        {stockStatus.status}
+                      </Badge>
+                    )
+                  })()}
+                </div>
+              </div>
+            </div>
+          )}
+          <div className="flex justify-end">
+            <Button onClick={() => setShowViewDialog(false)}>Close</Button>
           </div>
         </DialogContent>
       </Dialog>
 
       {/* Edit Dialog */}
-      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Edit Material</DialogTitle>
-            <DialogDescription>Update material information</DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+      {isAdmin && (
+        <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Edit Material</DialogTitle>
+              <DialogDescription>Update material information</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="edit-name">Material Name *</Label>
+                  <Input
+                    id="edit-name"
+                    placeholder="Enter material name"
+                    value={formData.name}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-category">Category *</Label>
+                  <Select
+                    value={formData.category}
+                    onValueChange={(value) => setFormData((prev) => ({ ...prev, category: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {materialCategories.map((category) => (
+                        <SelectItem key={category.id} value={category.name}>
+                          {category.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
               <div>
-                <Label htmlFor="edit-name">Material Name *</Label>
-                <Input
-                  id="edit-name"
-                  placeholder="Enter material name"
-                  value={formData.name}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+                <Label htmlFor="edit-description">Description</Label>
+                <Textarea
+                  id="edit-description"
+                  placeholder="Enter material description"
+                  value={formData.description}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
+                  rows={3}
                 />
               </div>
-
-              <div>
-                <Label htmlFor="edit-unit">Unit *</Label>
-                <Select
-                  value={formData.unit}
-                  onValueChange={(value) => setFormData((prev) => ({ ...prev, unit: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select unit" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {unitOptions.map((unit) => (
-                      <SelectItem key={unit} value={unit}>
-                        {unit}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <Label htmlFor="edit-current_stock">Current Stock *</Label>
+                  <Input
+                    id="edit-current_stock"
+                    type="number"
+                    min="0"
+                    value={formData.current_stock}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, current_stock: Number.parseFloat(e.target.value) || 0 }))
+                    }
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-min_stock">Minimum Stock *</Label>
+                  <Input
+                    id="edit-min_stock"
+                    type="number"
+                    min="0"
+                    value={formData.min_stock}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, min_stock: Number.parseFloat(e.target.value) || 0 }))
+                    }
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-unit">Unit *</Label>
+                  <Select
+                    value={formData.unit}
+                    onValueChange={(value) => setFormData((prev) => ({ ...prev, unit: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select unit" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {unitOptions.map((unit) => (
+                        <SelectItem key={unit} value={unit}>
+                          {unit}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-            </div>
-
-            <div>
-              <Label htmlFor="edit-description">Description</Label>
-              <Textarea
-                id="edit-description"
-                placeholder="Enter material description (optional)"
-                value={formData.description}
-                onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
-                rows={3}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="edit-category">Category *</Label>
-                <Select
-                  value={formData.category}
-                  onValueChange={(value) => setFormData((prev) => ({ ...prev, category: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {materialCategories.map((category) => (
-                      <SelectItem key={category.id} value={category.name}>
-                        {category.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
               <div>
                 <Label htmlFor="edit-location">Location *</Label>
                 <Select
@@ -1055,197 +1066,235 @@ export default function MaterialsTab({
                 </Select>
               </div>
             </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="edit-current_stock">Current Stock</Label>
-                <Input
-                  id="edit-current_stock"
-                  type="number"
-                  min="0"
-                  placeholder="0"
-                  value={formData.current_stock || ""}
-                  onChange={(e) =>
-                    setFormData((prev) => ({ ...prev, current_stock: Number.parseFloat(e.target.value) || 0 }))
-                  }
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="edit-min_stock">Minimum Stock</Label>
-                <Input
-                  id="edit-min_stock"
-                  type="number"
-                  min="0"
-                  placeholder="0"
-                  value={formData.min_stock || ""}
-                  onChange={(e) =>
-                    setFormData((prev) => ({ ...prev, min_stock: Number.parseFloat(e.target.value) || 0 }))
-                  }
-                />
-              </div>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => setShowEditDialog(false)} disabled={saving}>
+                Cancel
+              </Button>
+              <Button onClick={handleUpdateMaterial} disabled={saving}>
+                {saving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Updating...
+                  </>
+                ) : (
+                  "Update Material"
+                )}
+              </Button>
             </div>
+          </DialogContent>
+        </Dialog>
+      )}
 
-            <div>
-              <Label htmlFor="edit-status">Status</Label>
-              <Select
-                value={formData.status}
-                onValueChange={(value) => setFormData((prev) => ({ ...prev, status: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Active">Active</SelectItem>
-                  <SelectItem value="Inactive">Inactive</SelectItem>
-                  <SelectItem value="Discontinued">Discontinued</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+      {/* Delete Confirmation Dialog */}
+      {isAdmin && (
+        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete "{selectedMaterial?.name}" and all its data. This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={confirmDelete} disabled={deleting}>
+                {deleting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  "Delete"
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
+
+      {/* Material History Dialog */}
+      <Dialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Material History</DialogTitle>
+            <DialogDescription>Transaction history for {selectedMaterial?.name}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {loadingHistory ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin" />
+              </div>
+            ) : materialTransactions.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Quantity</TableHead>
+                    <TableHead>Notes</TableHead>
+                    <TableHead>User</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {materialTransactions.map((transaction) => (
+                    <TableRow key={transaction.id}>
+                      <TableCell>
+                        <div className="flex items-center">
+                          <Calendar className="h-4 w-4 mr-2 text-gray-400" />
+                          {new Date(transaction.created_at).toLocaleDateString()}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center">
+                          {transaction.type === "in" ? (
+                            <TrendingUp className="h-4 w-4 mr-2 text-green-500" />
+                          ) : transaction.type === "out" ? (
+                            <TrendingDown className="h-4 w-4 mr-2 text-red-500" />
+                          ) : (
+                            <RotateCcw className="h-4 w-4 mr-2 text-blue-500" />
+                          )}
+                          <Badge
+                            variant={
+                              transaction.type === "in"
+                                ? "default"
+                                : transaction.type === "out"
+                                  ? "destructive"
+                                  : "secondary"
+                            }
+                          >
+                            {transaction.type === "in"
+                              ? "Stock In"
+                              : transaction.type === "out"
+                                ? "Stock Out"
+                                : "Adjustment"}
+                          </Badge>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span
+                          className={
+                            transaction.type === "in"
+                              ? "text-green-600 font-medium"
+                              : transaction.type === "out"
+                                ? "text-red-600 font-medium"
+                                : "text-blue-600 font-medium"
+                          }
+                        >
+                          {transaction.type === "in" ? "+" : transaction.type === "out" ? "-" : ""}
+                          {transaction.quantity} {selectedMaterial?.unit}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm text-gray-600">{transaction.notes || "-"}</span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm text-gray-600">{transaction.created_by || "System"}</span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <div className="text-center py-8">
+                <p className="text-gray-500">No transaction history available for this material.</p>
+              </div>
+            )}
           </div>
-
-          <div className="flex justify-end space-x-2">
-            <Button variant="outline" onClick={() => setShowEditDialog(false)} disabled={saving}>
-              Cancel
-            </Button>
-            <Button onClick={handleUpdateMaterial} disabled={saving}>
-              {saving ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Updating...
-                </>
-              ) : (
-                "Update Material"
-              )}
-            </Button>
+          <div className="flex justify-end">
+            <Button onClick={() => setShowHistoryDialog(false)}>Close</Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete "{selectedMaterial?.name}" and all its data. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} disabled={deleting}>
-              {deleting ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Deleting...
-                </>
-              ) : (
-                "Delete"
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Manage Categories & Locations Dialog */}
+      {isAdmin && (
+        <Dialog open={showCategoriesDialog} onOpenChange={setShowCategoriesDialog}>
+          <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Manage Categories & Locations</DialogTitle>
+              <DialogDescription>Add or remove material categories and storage locations</DialogDescription>
+            </DialogHeader>
 
-      {/* Categories & Locations Management Dialog */}
-      <Dialog open={showCategoriesDialog} onOpenChange={setShowCategoriesDialog}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Manage Categories & Locations</DialogTitle>
-            <DialogDescription>Manage material categories and storage locations</DialogDescription>
-          </DialogHeader>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Categories Section */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Categories</h3>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Categories Section */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold">Categories</h3>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Enter category name"
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    onKeyPress={(e) => e.key === "Enter" && handleAddCategory()}
+                  />
+                  <Button onClick={handleAddCategory} disabled={loadingCategories}>
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
 
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Enter category name"
-                  value={newCategoryName}
-                  onChange={(e) => setNewCategoryName(e.target.value)}
-                  onKeyPress={(e) => e.key === "Enter" && handleAddCategory()}
-                />
-                <Button onClick={handleAddCategory} disabled={loadingCategories}>
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {loadingCategories ? (
-                  <div className="flex items-center justify-center py-4">
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    <span className="text-sm text-gray-500">Loading categories...</span>
-                  </div>
-                ) : materialCategories.length > 0 ? (
-                  materialCategories.map((category) => (
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {materialCategories.map((category) => (
                     <div key={category.id} className="flex justify-between items-center p-2 border rounded">
                       <span>{category.name}</span>
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => handleDeleteCategory(category.id)}
-                        disabled={loadingCategories}
+                        disabled={category.is_default}
                       >
                         <Trash2 className="h-3 w-3" />
                       </Button>
                     </div>
-                  ))
-                ) : (
-                  <p className="text-gray-500 text-center py-4">No categories found. Add your first category above.</p>
-                )}
-              </div>
-            </div>
-
-            {/* Locations Section */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold">Locations</h3>
-
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Enter location name"
-                  value={newLocationName}
-                  onChange={(e) => setNewLocationName(e.target.value)}
-                  onKeyPress={(e) => e.key === "Enter" && handleAddLocation()}
-                />
-                <Button onClick={handleAddLocation} disabled={loadingCategories}>
-                  <Plus className="h-4 w-4" />
-                </Button>
+                  ))}
+                  {materialCategories.length === 0 && (
+                    <p className="text-gray-500 text-center py-4">No categories added yet</p>
+                  )}
+                </div>
               </div>
 
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {loadingCategories ? (
-                  <div className="flex items-center justify-center py-4">
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    <span className="text-sm text-gray-500">Loading locations...</span>
-                  </div>
-                ) : materialLocations.length > 0 ? (
-                  materialLocations.map((location) => (
+              {/* Locations Section */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Storage Locations</h3>
+
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Enter location name"
+                    value={newLocationName}
+                    onChange={(e) => setNewLocationName(e.target.value)}
+                    onKeyPress={(e) => e.key === "Enter" && handleAddLocation()}
+                  />
+                  <Button onClick={handleAddLocation} disabled={loadingCategories}>
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {materialLocations.map((location) => (
                     <div key={location.id} className="flex justify-between items-center p-2 border rounded">
                       <span>{location.name}</span>
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => handleDeleteLocation(location.id)}
-                        disabled={loadingCategories}
+                        disabled={location.is_default}
                       >
                         <Trash2 className="h-3 w-3" />
                       </Button>
                     </div>
-                  ))
-                ) : (
-                  <p className="text-gray-500 text-center py-4">No locations found. Add your first location above.</p>
-                )}
+                  ))}
+                  {materialLocations.length === 0 && (
+                    <p className="text-gray-500 text-center py-4">No locations added yet</p>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="flex justify-end">
-            <Button onClick={() => setShowCategoriesDialog(false)}>Close</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+            <div className="flex justify-end">
+              <Button onClick={() => setShowCategoriesDialog(false)}>Close</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }

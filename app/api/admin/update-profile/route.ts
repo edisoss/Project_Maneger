@@ -1,18 +1,28 @@
-import { type NextRequest, NextResponse } from "next/server"
+import { NextResponse, type NextRequest } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 
-const supabaseUrl = process.env.SUPABASE_URL!
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
+/**
+ * PUT /api/admin/update-profile
+ * Body: { id, email, full_name, role, password?, is_admin }
+ */
 export async function PUT(request: NextRequest) {
   try {
-    const { id, email, full_name, role, password, is_admin } = await request.json()
+    const body = await request.json()
+    const { id, email, full_name, role, password, is_admin } = body
+
+    console.log("Updating profile with data:", { id, email, full_name, role, is_admin })
 
     if (!id || !email || !full_name) {
-      return NextResponse.json({ error: "ID, email, and full name are required" }, { status: 400 })
+      return NextResponse.json(
+        { error: "Missing required fields: id, email, and full_name are required" },
+        { status: 400 },
+      )
     }
 
-    // Create Supabase admin client
+    // Create Supabase client with service role key
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: {
         autoRefreshToken: false,
@@ -20,61 +30,56 @@ export async function PUT(request: NextRequest) {
       },
     })
 
-    // Update auth user
-    const authUpdateData: any = {
-      email,
-      user_metadata: {
-        full_name,
-        role,
-      },
+    // Check if auth user exists
+    const { data: authUser, error: getUserError } = await supabase.auth.admin.getUserById(id)
+
+    if (getUserError && getUserError.message !== "User not found") {
+      console.error("Error checking auth user:", getUserError.message)
+      return NextResponse.json({ error: `Auth error: ${getUserError.message}` }, { status: 500 })
     }
 
-    // Only update password if provided
-    if (password && password.trim() !== "") {
-      authUpdateData.password = password
-    }
-
-    // --- Update auth user (if they exist in the auth.users table) ---
-    const { error: authError } = await supabase.auth.admin.updateUserById(id, authUpdateData)
-
-    if (authError) {
-      // If the user is not found in the auth.users table we **ignore** the error
-      // so that we can still update the row in the public.profiles table.
-      // For any other error we bail out with a 500.
-      if (!/user not found/i.test(authError.message)) {
-        console.error("Auth error:", authError)
-        return NextResponse.json({ error: `Failed to update auth user: ${authError.message}` }, { status: 500 })
-      } else {
-        console.warn(`Auth user ${id} not found – skipping auth update and continuing with profile update`)
+    // Update auth user if exists
+    if (authUser?.user) {
+      console.log("Updating auth user...")
+      const authUpdateData: any = { email }
+      if (password) {
+        authUpdateData.password = password
       }
+
+      const { error: authUpdateError } = await supabase.auth.admin.updateUserById(id, authUpdateData)
+
+      if (authUpdateError) {
+        console.error("Auth user update error:", authUpdateError.message)
+        return NextResponse.json({ error: `Auth update failed: ${authUpdateError.message}` }, { status: 500 })
+      }
+      console.log("Auth user updated successfully")
+    } else {
+      console.log("Auth user not found, skipping auth update (profile-only update)")
     }
 
-    // Update profile data
-    const { data: profileData, error: profileError } = await supabase
+    // Update profile in database
+    const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .update({
         email,
         full_name,
-        role,
+        role: role || "user",
         is_admin: is_admin || false,
-        updated_at: new Date().toISOString(),
       })
       .eq("id", id)
       .select()
       .single()
 
     if (profileError) {
-      console.error("Profile error:", profileError)
-      return NextResponse.json({ error: `Failed to update profile: ${profileError.message}` }, { status: 500 })
+      console.error("Profile update error:", profileError.message)
+      return NextResponse.json({ error: `Profile update failed: ${profileError.message}` }, { status: 500 })
     }
 
-    return NextResponse.json({
-      success: true,
-      profile: profileData,
-      message: "User updated successfully",
-    })
+    console.log("Profile updated successfully:", profile)
+
+    return NextResponse.json({ success: true, profile })
   } catch (error) {
-    console.error("Unexpected error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    console.error("Update error:", error)
+    return NextResponse.json({ error: "Database error updating user" }, { status: 500 })
   }
 }

@@ -28,7 +28,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Plus, Edit, Trash2, Building2, Calendar, MapPin, TrendingUp, Loader2 } from "lucide-react"
+import { Plus, Edit, Trash2, Building2, Calendar, MapPin, TrendingUp, Loader2, Eye } from "lucide-react"
 import { addProject, updateProject, deleteProject } from "@/lib/database"
 import type { Project } from "@/lib/database"
 import { useToast } from "@/hooks/use-toast"
@@ -37,12 +37,14 @@ interface ProjectsTabProps {
   projects: Project[]
   setProjects: (projects: Project[]) => void
   logActivity?: (activity: any) => void
+  isAdmin: boolean
 }
 
-export default function ProjectsTab({ projects = [], setProjects = () => {}, logActivity }: ProjectsTabProps) {
+export default function ProjectsTab({ projects = [], setProjects = () => {}, logActivity, isAdmin }: ProjectsTabProps) {
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [showEditDialog, setShowEditDialog] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [showViewDialog, setShowViewDialog] = useState(false)
   const [selectedProject, setSelectedProject] = useState<Project | null>(null)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -76,6 +78,11 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
   }
 
   const handleAddProject = async () => {
+    if (!isAdmin) {
+      toast({ title: "Access Denied", description: "Only administrators can add projects", variant: "destructive" })
+      return
+    }
+
     try {
       setSaving(true)
       if (!formData.name || !formData.location || !formData.start_date) {
@@ -124,7 +131,17 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
     setShowEditDialog(true)
   }
 
+  const handleView = (project: Project) => {
+    setSelectedProject(project)
+    setShowViewDialog(true)
+  }
+
   const handleUpdateProject = async () => {
+    if (!isAdmin) {
+      toast({ title: "Access Denied", description: "Only administrators can edit projects", variant: "destructive" })
+      return
+    }
+
     if (!selectedProject) return
     try {
       setSaving(true)
@@ -161,6 +178,10 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
   }
 
   const handleDelete = (project: Project) => {
+    if (!isAdmin) {
+      toast({ title: "Access Denied", description: "Only administrators can delete projects", variant: "destructive" })
+      return
+    }
     setSelectedProject(project)
     setShowDeleteDialog(true)
   }
@@ -224,145 +245,150 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold">Projects Management</h2>
-          <p className="text-gray-600">Manage your construction projects and track progress</p>
+          <p className="text-gray-600">
+            Manage your construction projects and track progress
+            {!isAdmin && " (View Only)"}
+          </p>
         </div>
-        <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-          <DialogTrigger asChild>
-            <Button
-              onClick={() => {
-                resetForm()
-                setShowAddDialog(true)
-              }}
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Add Project
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Add New Project</DialogTitle>
-              <DialogDescription>Create a new construction project</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="name">Project Name *</Label>
-                  <Input
-                    id="name"
-                    placeholder="Enter project name"
-                    value={formData.name}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="type">Project Type</Label>
-                  <Select
-                    value={formData.type}
-                    onValueChange={(value) => setFormData((prev) => ({ ...prev, type: value }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {projectTypes.map((type) => (
-                        <SelectItem key={type} value={type}>
-                          {type}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div>
-                <Label htmlFor="description">Description</Label>
-                <Textarea
-                  id="description"
-                  placeholder="Enter project description"
-                  value={formData.description}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
-                  rows={3}
-                />
-              </div>
-              <div>
-                <Label htmlFor="location">Location *</Label>
-                <Input
-                  id="location"
-                  placeholder="Enter project location"
-                  value={formData.location}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, location: e.target.value }))}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="start_date">Start Date *</Label>
-                  <Input
-                    id="start_date"
-                    type="date"
-                    value={formData.start_date}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, start_date: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="end_date">End Date</Label>
-                  <Input
-                    id="end_date"
-                    type="date"
-                    value={formData.end_date}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, end_date: e.target.value }))}
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="status">Status</Label>
-                  <Select
-                    value={formData.status}
-                    onValueChange={(value) => setFormData((prev) => ({ ...prev, status: value }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {statusOptions.map((status) => (
-                        <SelectItem key={status} value={status}>
-                          {status}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="progress">Progress (%)</Label>
-                  <Input
-                    id="progress"
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={formData.progress}
-                    onChange={(e) =>
-                      setFormData((prev) => ({ ...prev, progress: Number.parseInt(e.target.value) || 0 }))
-                    }
-                  />
-                </div>
-              </div>
-            </div>
-            <div className="flex justify-end space-x-2">
-              <Button variant="outline" onClick={() => setShowAddDialog(false)} disabled={saving}>
-                Cancel
+        {isAdmin && (
+          <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+            <DialogTrigger asChild>
+              <Button
+                onClick={() => {
+                  resetForm()
+                  setShowAddDialog(true)
+                }}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Project
               </Button>
-              <Button onClick={handleAddProject} disabled={saving}>
-                {saving ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Adding...
-                  </>
-                ) : (
-                  "Add Project"
-                )}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Add New Project</DialogTitle>
+                <DialogDescription>Create a new construction project</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="name">Project Name *</Label>
+                    <Input
+                      id="name"
+                      placeholder="Enter project name"
+                      value={formData.name}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="type">Project Type</Label>
+                    <Select
+                      value={formData.type}
+                      onValueChange={(value) => setFormData((prev) => ({ ...prev, type: value }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {projectTypes.map((type) => (
+                          <SelectItem key={type} value={type}>
+                            {type}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    placeholder="Enter project description"
+                    value={formData.description}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
+                    rows={3}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="location">Location *</Label>
+                  <Input
+                    id="location"
+                    placeholder="Enter project location"
+                    value={formData.location}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, location: e.target.value }))}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="start_date">Start Date *</Label>
+                    <Input
+                      id="start_date"
+                      type="date"
+                      value={formData.start_date}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, start_date: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="end_date">End Date</Label>
+                    <Input
+                      id="end_date"
+                      type="date"
+                      value={formData.end_date}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, end_date: e.target.value }))}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="status">Status</Label>
+                    <Select
+                      value={formData.status}
+                      onValueChange={(value) => setFormData((prev) => ({ ...prev, status: value }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {statusOptions.map((status) => (
+                          <SelectItem key={status} value={status}>
+                            {status}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="progress">Progress (%)</Label>
+                    <Input
+                      id="progress"
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={formData.progress}
+                      onChange={(e) =>
+                        setFormData((prev) => ({ ...prev, progress: Number.parseInt(e.target.value) || 0 }))
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-end space-x-2">
+                <Button variant="outline" onClick={() => setShowAddDialog(false)} disabled={saving}>
+                  Cancel
+                </Button>
+                <Button onClick={handleAddProject} disabled={saving}>
+                  {saving ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Adding...
+                    </>
+                  ) : (
+                    "Add Project"
+                  )}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       {/* Statistics Cards */}
@@ -413,7 +439,9 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
       <Card>
         <CardHeader>
           <CardTitle>Construction Projects</CardTitle>
-          <CardDescription>Manage and track your construction projects</CardDescription>
+          <CardDescription>
+            {isAdmin ? "Manage and track your construction projects" : "View construction projects and their progress"}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
@@ -468,12 +496,19 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
                   </TableCell>
                   <TableCell>
                     <div className="flex space-x-2">
-                      <Button variant="outline" size="sm" onClick={() => handleEdit(project)}>
-                        <Edit className="h-3 w-3" />
+                      <Button variant="outline" size="sm" onClick={() => handleView(project)}>
+                        <Eye className="h-3 w-3" />
                       </Button>
-                      <Button variant="outline" size="sm" onClick={() => handleDelete(project)}>
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                      {isAdmin && (
+                        <>
+                          <Button variant="outline" size="sm" onClick={() => handleEdit(project)}>
+                            <Edit className="h-3 w-3" />
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => handleDelete(project)}>
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -482,162 +517,233 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
           </Table>
           {projects.length === 0 && (
             <div className="text-center py-8">
-              <p className="text-gray-500">No projects found. Add your first project to get started!</p>
+              <p className="text-gray-500">
+                No projects found.{" "}
+                {isAdmin ? "Add your first project to get started!" : "No projects available to view."}
+              </p>
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Edit Dialog */}
-      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+      {/* View Dialog */}
+      <Dialog open={showViewDialog} onOpenChange={setShowViewDialog}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Edit Project</DialogTitle>
-            <DialogDescription>Update project information</DialogDescription>
+            <DialogTitle>Project Details</DialogTitle>
+            <DialogDescription>View project information</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="edit-name">Project Name *</Label>
-                <Input
-                  id="edit-name"
-                  placeholder="Enter project name"
-                  value={formData.name}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
-                />
+          {selectedProject && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm font-medium">Project Name</Label>
+                  <p className="text-sm text-gray-600">{selectedProject.name}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Type</Label>
+                  <p className="text-sm text-gray-600">{selectedProject.type}</p>
+                </div>
               </div>
               <div>
-                <Label htmlFor="edit-type">Project Type</Label>
-                <Select
-                  value={formData.type}
-                  onValueChange={(value) => setFormData((prev) => ({ ...prev, type: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {projectTypes.map((type) => (
-                      <SelectItem key={type} value={type}>
-                        {type}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div>
-              <Label htmlFor="edit-description">Description</Label>
-              <Textarea
-                id="edit-description"
-                placeholder="Enter project description"
-                value={formData.description}
-                onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
-                rows={3}
-              />
-            </div>
-            <div>
-              <Label htmlFor="edit-location">Location *</Label>
-              <Input
-                id="edit-location"
-                placeholder="Enter project location"
-                value={formData.location}
-                onChange={(e) => setFormData((prev) => ({ ...prev, location: e.target.value }))}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="edit-start_date">Start Date *</Label>
-                <Input
-                  id="edit-start_date"
-                  type="date"
-                  value={formData.start_date}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, start_date: e.target.value }))}
-                />
+                <Label className="text-sm font-medium">Description</Label>
+                <p className="text-sm text-gray-600">{selectedProject.description || "No description provided"}</p>
               </div>
               <div>
-                <Label htmlFor="edit-end_date">End Date</Label>
-                <Input
-                  id="edit-end_date"
-                  type="date"
-                  value={formData.end_date}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, end_date: e.target.value }))}
-                />
+                <Label className="text-sm font-medium">Location</Label>
+                <p className="text-sm text-gray-600">{selectedProject.location}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm font-medium">Start Date</Label>
+                  <p className="text-sm text-gray-600">{new Date(selectedProject.start_date).toLocaleDateString()}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">End Date</Label>
+                  <p className="text-sm text-gray-600">
+                    {selectedProject.end_date ? new Date(selectedProject.end_date).toLocaleDateString() : "Not set"}
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm font-medium">Status</Label>
+                  <div className="mt-1">{getStatusBadge(selectedProject.status)}</div>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Progress</Label>
+                  <div className="mt-2">
+                    <div className="flex justify-between text-sm mb-1">
+                      <span>{selectedProject.progress}%</span>
+                    </div>
+                    <Progress value={selectedProject.progress} className="h-2" />
+                  </div>
+                </div>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="edit-status">Status</Label>
-                <Select
-                  value={formData.status}
-                  onValueChange={(value) => setFormData((prev) => ({ ...prev, status: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {statusOptions.map((status) => (
-                      <SelectItem key={status} value={status}>
-                        {status}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="edit-progress">Progress (%)</Label>
-                <Input
-                  id="edit-progress"
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={formData.progress}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, progress: Number.parseInt(e.target.value) || 0 }))}
-                />
-              </div>
-            </div>
-          </div>
-          <div className="flex justify-end space-x-2">
-            <Button variant="outline" onClick={() => setShowEditDialog(false)} disabled={saving}>
-              Cancel
-            </Button>
-            <Button onClick={handleUpdateProject} disabled={saving}>
-              {saving ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Updating...
-                </>
-              ) : (
-                "Update Project"
-              )}
-            </Button>
+          )}
+          <div className="flex justify-end">
+            <Button onClick={() => setShowViewDialog(false)}>Close</Button>
           </div>
         </DialogContent>
       </Dialog>
 
+      {/* Edit Dialog */}
+      {isAdmin && (
+        <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Edit Project</DialogTitle>
+              <DialogDescription>Update project information</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="edit-name">Project Name *</Label>
+                  <Input
+                    id="edit-name"
+                    placeholder="Enter project name"
+                    value={formData.name}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-type">Project Type</Label>
+                  <Select
+                    value={formData.type}
+                    onValueChange={(value) => setFormData((prev) => ({ ...prev, type: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {projectTypes.map((type) => (
+                        <SelectItem key={type} value={type}>
+                          {type}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="edit-description">Description</Label>
+                <Textarea
+                  id="edit-description"
+                  placeholder="Enter project description"
+                  value={formData.description}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
+                  rows={3}
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-location">Location *</Label>
+                <Input
+                  id="edit-location"
+                  placeholder="Enter project location"
+                  value={formData.location}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, location: e.target.value }))}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="edit-start_date">Start Date *</Label>
+                  <Input
+                    id="edit-start_date"
+                    type="date"
+                    value={formData.start_date}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, start_date: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-end_date">End Date</Label>
+                  <Input
+                    id="edit-end_date"
+                    type="date"
+                    value={formData.end_date}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, end_date: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="edit-status">Status</Label>
+                  <Select
+                    value={formData.status}
+                    onValueChange={(value) => setFormData((prev) => ({ ...prev, status: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {statusOptions.map((status) => (
+                        <SelectItem key={status} value={status}>
+                          {status}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="edit-progress">Progress (%)</Label>
+                  <Input
+                    id="edit-progress"
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={formData.progress}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, progress: Number.parseInt(e.target.value) || 0 }))
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => setShowEditDialog(false)} disabled={saving}>
+                Cancel
+              </Button>
+              <Button onClick={handleUpdateProject} disabled={saving}>
+                {saving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Updating...
+                  </>
+                ) : (
+                  "Update Project"
+                )}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {/* Delete Confirmation Dialog */}
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete "{selectedProject?.name}" and all its data. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} disabled={deleting}>
-              {deleting ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Deleting...
-                </>
-              ) : (
-                "Delete"
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {isAdmin && (
+        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete "{selectedProject?.name}" and all its data. This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={confirmDelete} disabled={deleting}>
+                {deleting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  "Delete"
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   )
 }

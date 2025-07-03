@@ -1,4 +1,5 @@
 import { createClientClient } from "./supabase-client"
+import { createAdminClient } from "./supabase-admin"
 
 export interface Material {
   id: string
@@ -121,6 +122,7 @@ export interface Profile {
   full_name: string
   role: string
   is_admin: boolean
+  password: string
   created_at: string
   updated_at: string
 }
@@ -183,7 +185,7 @@ export async function addActivity(activity: {
     const activityData = {
       ...activity,
       variant: activity.variant || "default",
-      created_by: activity.created_by || "system",
+      created_by: activity.created_by || null, // Use null instead of "system"
     }
 
     const { data, error } = await supabase.from("activities").insert([activityData]).select().single()
@@ -201,21 +203,42 @@ export async function addActivity(activity: {
 }
 
 // Profiles functions
+/**
+ * getProfiles()
+ *
+ * On the **server** ➜ reads the table directly with the admin client.
+ * On the **client**  ➜ fetches from `/api/admin/list-profiles`
+ *                     (the route uses the service-role key).
+ */
 export async function getProfiles(): Promise<Profile[]> {
-  const supabase = createClientClient()
-  if (!supabase) return []
-
   try {
-    const { data, error } = await supabase.from("profiles").select("*").order("created_at", { ascending: false })
+    // -------- Server side --------
+    if (typeof window === "undefined") {
+      const supabase = createAdminClient()
+      if (!supabase) return []
 
-    if (error) {
-      console.error("Error fetching profiles:", error)
-      return []
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, email, full_name, role, is_admin, created_at, updated_at")
+
+      if (error) {
+        console.error("Error fetching profiles (server):", error)
+        return []
+      }
+      return data ?? []
     }
 
-    return data || []
-  } catch (error) {
-    console.error("Error in getProfiles:", error)
+    // -------- Client side --------
+    const res = await fetch("/api/admin/list-profiles")
+    if (!res.ok) {
+      const text = await res.text()
+      console.error("Error fetching profiles (client):", text)
+      return []
+    }
+    const json = await res.json()
+    return json.profiles ?? []
+  } catch (err) {
+    console.error("Error in getProfiles:", err)
     return []
   }
 }
@@ -228,6 +251,8 @@ export async function addProfile(profileData: {
   is_admin: boolean
 }): Promise<Profile | null> {
   try {
+    console.log("Calling add-profile API with:", { ...profileData, password: "[REDACTED]" })
+
     const response = await fetch("/api/admin/add-profile", {
       method: "POST",
       headers: {
@@ -236,12 +261,27 @@ export async function addProfile(profileData: {
       body: JSON.stringify(profileData),
     })
 
-    const result = await response.json()
+    console.log("API response status:", response.status)
+    console.log("API response headers:", Object.fromEntries(response.headers.entries()))
 
     if (!response.ok) {
-      throw new Error(result.error || "Failed to add profile")
+      const errorText = await response.text()
+      console.error("API error response:", errorText)
+
+      // Try to parse as JSON, fallback to text
+      let errorMessage = "Failed to add profile"
+      try {
+        const errorJson = JSON.parse(errorText)
+        errorMessage = errorJson.error || errorMessage
+      } catch {
+        errorMessage = errorText.substring(0, 200) // Truncate long HTML errors
+      }
+
+      throw new Error(errorMessage)
     }
 
+    const result = await response.json()
+    console.log("API success response:", result)
     return result.profile
   } catch (error) {
     console.error("Error adding profile:", error)
