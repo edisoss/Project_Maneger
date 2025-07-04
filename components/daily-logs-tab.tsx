@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -29,7 +29,21 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Plus, Edit, Trash2, FileText, Calendar, Users, Package, MapPin, Clock, Loader2, Eye } from "lucide-react"
+import {
+  Plus,
+  Edit,
+  Trash2,
+  FileText,
+  Calendar,
+  Users,
+  Package,
+  MapPin,
+  Clock,
+  Loader2,
+  Eye,
+  Filter,
+  X,
+} from "lucide-react"
 import { addDailyLog, updateDailyLog, deleteDailyLog, updateMaterial } from "@/lib/database"
 import type { DailyLog, Project, Worker, Material } from "@/lib/database"
 import { useToast } from "@/hooks/use-toast"
@@ -65,6 +79,13 @@ export default function DailyLogsTab({
   const [deleting, setDeleting] = useState(false)
   const { toast } = useToast()
 
+  // Date filtering state
+  const [dateFilter, setDateFilter] = useState({
+    fromDate: "",
+    toDate: "",
+    quickFilter: "all" as "all" | "today" | "week" | "month" | "custom",
+  })
+
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split("T")[0],
     project_id: "",
@@ -74,10 +95,89 @@ export default function DailyLogsTab({
     equipment_used: "",
     weather_conditions: "",
     working_place: "",
+    hours_worked: 8,
     notes: "",
   })
 
   const weatherOptions = ["Sunny", "Cloudy", "Rainy", "Windy", "Stormy", "Foggy", "Hot", "Cold"]
+
+  // Converts a comma- or newline-separated list to a trimmed string array.
+  function toStringArray(value: string): string[] {
+    return value
+      .split(/[,\\n]/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+  }
+
+  // Date filtering functions
+  const getDateRangeForQuickFilter = (filter: string) => {
+    const today = new Date()
+    const todayStr = today.toISOString().split("T")[0]
+
+    switch (filter) {
+      case "today":
+        return { fromDate: todayStr, toDate: todayStr }
+      case "week":
+        const weekStart = new Date(today)
+        weekStart.setDate(today.getDate() - today.getDay()) // Start of week (Sunday)
+        const weekEnd = new Date(weekStart)
+        weekEnd.setDate(weekStart.getDate() + 6) // End of week (Saturday)
+        return {
+          fromDate: weekStart.toISOString().split("T")[0],
+          toDate: weekEnd.toISOString().split("T")[0],
+        }
+      case "month":
+        const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
+        const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+        return {
+          fromDate: monthStart.toISOString().split("T")[0],
+          toDate: monthEnd.toISOString().split("T")[0],
+        }
+      default:
+        return { fromDate: "", toDate: "" }
+    }
+  }
+
+  const handleQuickFilter = (filter: "all" | "today" | "week" | "month" | "custom") => {
+    if (filter === "custom") {
+      setDateFilter({ ...dateFilter, quickFilter: filter })
+    } else {
+      const range = getDateRangeForQuickFilter(filter)
+      setDateFilter({
+        quickFilter: filter,
+        fromDate: range.fromDate,
+        toDate: range.toDate,
+      })
+    }
+  }
+
+  const clearDateFilter = () => {
+    setDateFilter({
+      fromDate: "",
+      toDate: "",
+      quickFilter: "all",
+    })
+  }
+
+  // Filter logs based on date range
+  const filteredLogs = useMemo(() => {
+    if (dateFilter.quickFilter === "all" && !dateFilter.fromDate && !dateFilter.toDate) {
+      return dailyLogs
+    }
+
+    return dailyLogs.filter((log) => {
+      const logDate = new Date(log.date)
+      const logDateStr = logDate.toISOString().split("T")[0]
+
+      if (dateFilter.fromDate && logDateStr < dateFilter.fromDate) {
+        return false
+      }
+      if (dateFilter.toDate && logDateStr > dateFilter.toDate) {
+        return false
+      }
+      return true
+    })
+  }, [dailyLogs, dateFilter])
 
   const resetForm = () => {
     setFormData({
@@ -89,6 +189,7 @@ export default function DailyLogsTab({
       equipment_used: "",
       weather_conditions: "Sunny",
       working_place: "",
+      hours_worked: 8,
       notes: "",
     })
   }
@@ -106,10 +207,21 @@ export default function DailyLogsTab({
         return
       }
 
+      const equipmentArray = toStringArray(formData.equipment_used)
+
       const logData = {
-        ...formData,
-        materials_used: JSON.stringify(formData.materials_used),
-        workers_present: JSON.stringify(formData.workers_present),
+        title: `Daily Log - ${new Date(formData.date).toLocaleDateString()}`,
+        date: formData.date,
+        project_id: formData.project_id,
+        weather: formData.weather_conditions,
+        temperature: 20, // default
+        workers_present: formData.workers_present,
+        materials_used: formData.materials_used,
+        equipment_used: equipmentArray,
+        hours_worked: formData.hours_worked,
+        work_completed: formData.work_description,
+        status: "completed",
+        working_place: formData.working_place,
       }
 
       const newLog = await addDailyLog(logData)
@@ -160,18 +272,81 @@ export default function DailyLogsTab({
   }
 
   const handleEdit = (log: DailyLog) => {
+    console.log("Editing log:", log)
+    console.log("Available workers:", workers)
     setSelectedLog(log)
+
+    // Parse workers_present - handle both array and JSON string formats
+    let workersPresent: string[] = []
+    try {
+      console.log("=== DEBUGGING WORKERS_PRESENT ===")
+      console.log("Raw workers_present:", log.workers_present, typeof log.workers_present)
+      console.log(
+        "Available workers:",
+        workers.map((w) => ({ id: w.id, name: w.name, idType: typeof w.id })),
+      )
+
+      if (Array.isArray(log.workers_present)) {
+        // Convert all to strings for consistent comparison
+        workersPresent = log.workers_present.map((id) => String(id))
+        console.log("Parsed as array:", workersPresent)
+      } else if (typeof log.workers_present === "string") {
+        const parsed = JSON.parse(log.workers_present || "[]")
+        workersPresent = Array.isArray(parsed) ? parsed.map((id) => String(id)) : []
+        console.log("Parsed from JSON string:", workersPresent)
+      }
+
+      // Verify which workers should be selected
+      const matchingWorkers = workers.filter(
+        (worker) => workersPresent.includes(String(worker.id)) || workersPresent.includes(worker.id),
+      )
+      console.log(
+        "Workers that should be selected:",
+        matchingWorkers.map((w) => ({ id: w.id, name: w.name })),
+      )
+      console.log("=== END DEBUGGING ===")
+    } catch (e) {
+      console.error("Error parsing workers_present:", e)
+      workersPresent = []
+    }
+
+    // Parse materials_used - handle both array and JSON string formats
+    let materialsUsed: { material_id: string; quantity: number }[] = []
+    try {
+      if (Array.isArray(log.materials_used)) {
+        materialsUsed = log.materials_used
+      } else if (typeof log.materials_used === "string") {
+        const parsed = JSON.parse(log.materials_used || "[]")
+        materialsUsed = Array.isArray(parsed) ? parsed : []
+      }
+    } catch (e) {
+      console.error("Error parsing materials_used:", e)
+      materialsUsed = []
+    }
+
+    // Parse equipment_used - handle both array and string formats
+    let equipmentUsed = ""
+    try {
+      if (Array.isArray(log.equipment_used)) {
+        equipmentUsed = log.equipment_used.join(", ")
+      } else if (typeof log.equipment_used === "string") {
+        equipmentUsed = log.equipment_used
+      }
+    } catch (e) {
+      console.error("Error parsing equipment_used:", e)
+      equipmentUsed = ""
+    }
+
     setFormData({
       date: log.date,
       project_id: log.project_id,
-      workers_present: Array.isArray(log.workers_present)
-        ? log.workers_present
-        : JSON.parse(log.workers_present || "[]"),
-      work_description: log.work_description,
-      materials_used: Array.isArray(log.materials_used) ? log.materials_used : JSON.parse(log.materials_used || "[]"),
-      equipment_used: log.equipment_used || "",
-      weather_conditions: log.weather_conditions || "Sunny",
+      workers_present: workersPresent,
+      work_description: log.work_description || log.work_completed || "",
+      materials_used: materialsUsed,
+      equipment_used: equipmentUsed,
+      weather_conditions: log.weather_conditions || log.weather || "Sunny", // Check both fields
       working_place: log.working_place || "",
+      hours_worked: log.hours_worked || 8,
       notes: log.notes || "",
     })
     setShowEditDialog(true)
@@ -196,10 +371,21 @@ export default function DailyLogsTab({
         return
       }
 
+      const equipmentArray = toStringArray(formData.equipment_used)
+
       const logData = {
-        ...formData,
-        materials_used: JSON.stringify(formData.materials_used),
-        workers_present: JSON.stringify(formData.workers_present),
+        title: `Daily Log - ${new Date(formData.date).toLocaleDateString()}`,
+        date: formData.date,
+        project_id: formData.project_id,
+        weather: formData.weather_conditions,
+        temperature: 20,
+        workers_present: formData.workers_present,
+        materials_used: formData.materials_used,
+        equipment_used: equipmentArray,
+        hours_worked: formData.hours_worked,
+        work_completed: formData.work_description,
+        status: "completed",
+        working_place: formData.working_place,
       }
 
       const updatedLog = await updateDailyLog(selectedLog.id, logData)
@@ -273,12 +459,20 @@ export default function DailyLogsTab({
   }
 
   const handleWorkerToggle = (workerId: string, checked: boolean) => {
-    setFormData((prev) => ({
-      ...prev,
-      workers_present: checked
-        ? [...prev.workers_present, workerId]
-        : prev.workers_present.filter((id) => id !== workerId),
-    }))
+    const workerIdStr = String(workerId)
+    console.log(`handleWorkerToggle called: ${workerIdStr} -> ${checked}`)
+
+    setFormData((prev) => {
+      const newWorkersPresent = checked
+        ? [...prev.workers_present.filter((id) => String(id) !== workerIdStr), workerIdStr]
+        : prev.workers_present.filter((id) => String(id) !== workerIdStr)
+
+      console.log("Updated workers_present:", newWorkersPresent)
+      return {
+        ...prev,
+        workers_present: newWorkersPresent,
+      }
+    })
   }
 
   const handleMaterialChange = (materialId: string, quantity: number) => {
@@ -301,8 +495,23 @@ export default function DailyLogsTab({
     return projects.find((p) => p.id === projectId)?.name || "Unknown Project"
   }
 
-  const getWorkerName = (workerId: string) => {
-    return workers.find((w) => w.id === workerId)?.name || "Unknown Worker"
+  const getWorkerName = (workerId: string | number) => {
+    // Convert to string for comparison and try both string and number matching
+    const workerIdStr = String(workerId)
+    const workerIdNum = Number(workerId)
+
+    console.log("Looking for worker:", workerId, "as string:", workerIdStr, "as number:", workerIdNum)
+    console.log(
+      "Available workers:",
+      workers.map((w) => ({ id: w.id, name: w.name, idType: typeof w.id })),
+    )
+
+    const worker = workers.find(
+      (w) => w.id === workerIdStr || w.id === String(workerIdNum) || String(w.id) === workerIdStr,
+    )
+
+    console.log("Found worker:", worker)
+    return worker?.name || `Unknown Worker (ID: ${workerId})`
   }
 
   const getMaterialName = (materialId: string) => {
@@ -313,21 +522,21 @@ export default function DailyLogsTab({
     return materials.find((m) => m.id === materialId)?.unit || "units"
   }
 
-  // Calculate statistics
-  const totalLogs = dailyLogs.length
-  const thisWeekLogs = dailyLogs.filter((log) => {
+  // Calculate statistics based on filtered logs
+  const totalLogs = filteredLogs.length
+  const thisWeekLogs = filteredLogs.filter((log) => {
     const logDate = new Date(log.date)
     const weekAgo = new Date()
     weekAgo.setDate(weekAgo.getDate() - 7)
     return logDate >= weekAgo
   }).length
-  const thisMonthLogs = dailyLogs.filter((log) => {
+  const thisMonthLogs = filteredLogs.filter((log) => {
     const logDate = new Date(log.date)
     const monthAgo = new Date()
     monthAgo.setMonth(monthAgo.getMonth() - 1)
     return logDate >= monthAgo
   }).length
-  const activeProjects = new Set(dailyLogs.map((log) => log.project_id)).size
+  const activeProjects = new Set(filteredLogs.map((log) => log.project_id)).size
 
   return (
     <div className="space-y-6">
@@ -399,7 +608,7 @@ export default function DailyLogsTab({
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <div>
                     <Label htmlFor="working_place">Working Place</Label>
                     <Input
@@ -427,13 +636,25 @@ export default function DailyLogsTab({
                       </SelectContent>
                     </Select>
                   </div>
+                  <div>
+                    <Label htmlFor="hours_worked">Hours Worked *</Label>
+                    <Input
+                      id="hours_worked"
+                      type="number"
+                      min="0"
+                      max="24"
+                      step="0.5"
+                      value={formData.hours_worked}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, hours_worked: Number(e.target.value) || 0 }))}
+                    />
+                  </div>
                 </div>
 
                 <div>
                   <Label htmlFor="equipment_used">Equipment Used</Label>
                   <Textarea
                     id="equipment_used"
-                    placeholder="List equipment and machinery used"
+                    placeholder="List equipment and machinery used (separate with commas or new lines)"
                     value={formData.equipment_used}
                     onChange={(e) => setFormData((prev) => ({ ...prev, equipment_used: e.target.value }))}
                     rows={2}
@@ -541,16 +762,112 @@ export default function DailyLogsTab({
         )}
       </div>
 
+      {/* Date Filter Controls */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Filter className="h-5 w-5" />
+            Filter by Date
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {/* Quick Filter Buttons */}
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant={dateFilter.quickFilter === "all" ? "default" : "outline"}
+                size="sm"
+                onClick={() => handleQuickFilter("all")}
+              >
+                All Logs
+              </Button>
+              <Button
+                variant={dateFilter.quickFilter === "today" ? "default" : "outline"}
+                size="sm"
+                onClick={() => handleQuickFilter("today")}
+              >
+                Today
+              </Button>
+              <Button
+                variant={dateFilter.quickFilter === "week" ? "default" : "outline"}
+                size="sm"
+                onClick={() => handleQuickFilter("week")}
+              >
+                This Week
+              </Button>
+              <Button
+                variant={dateFilter.quickFilter === "month" ? "default" : "outline"}
+                size="sm"
+                onClick={() => handleQuickFilter("month")}
+              >
+                This Month
+              </Button>
+              <Button
+                variant={dateFilter.quickFilter === "custom" ? "default" : "outline"}
+                size="sm"
+                onClick={() => handleQuickFilter("custom")}
+              >
+                Custom Range
+              </Button>
+              {(dateFilter.fromDate || dateFilter.toDate) && (
+                <Button variant="ghost" size="sm" onClick={clearDateFilter}>
+                  <X className="h-4 w-4 mr-1" />
+                  Clear Filter
+                </Button>
+              )}
+            </div>
+
+            {/* Custom Date Range Inputs */}
+            {dateFilter.quickFilter === "custom" && (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="fromDate">From Date</Label>
+                  <Input
+                    id="fromDate"
+                    type="date"
+                    value={dateFilter.fromDate}
+                    onChange={(e) => setDateFilter((prev) => ({ ...prev, fromDate: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="toDate">To Date</Label>
+                  <Input
+                    id="toDate"
+                    type="date"
+                    value={dateFilter.toDate}
+                    onChange={(e) => setDateFilter((prev) => ({ ...prev, toDate: e.target.value }))}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Filter Summary */}
+            {(dateFilter.fromDate || dateFilter.toDate) && (
+              <div className="text-sm text-gray-600">
+                Showing logs from{" "}
+                {dateFilter.fromDate ? new Date(dateFilter.fromDate).toLocaleDateString() : "beginning"} to{" "}
+                {dateFilter.toDate ? new Date(dateFilter.toDate).toLocaleDateString() : "end"} ({filteredLogs.length}{" "}
+                logs found)
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Statistics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Logs</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {dateFilter.quickFilter === "all" ? "Total Logs" : "Filtered Logs"}
+            </CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalLogs}</div>
-            <p className="text-xs text-muted-foreground">All time</p>
+            <p className="text-xs text-muted-foreground">
+              {dateFilter.quickFilter === "all" ? "All time" : "In selected range"}
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -580,7 +897,7 @@ export default function DailyLogsTab({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-purple-600">{activeProjects}</div>
-            <p className="text-xs text-muted-foreground">With recent logs</p>
+            <p className="text-xs text-muted-foreground">With logs in range</p>
           </CardContent>
         </Card>
       </div>
@@ -591,15 +908,24 @@ export default function DailyLogsTab({
           <CardTitle>Daily Work Logs</CardTitle>
           <CardDescription>
             {isAdmin ? "Track daily work progress and material usage" : "View daily work progress and material usage"}
+            {filteredLogs.length !== dailyLogs.length && (
+              <span className="ml-2 text-blue-600">
+                (Showing {filteredLogs.length} of {dailyLogs.length} logs)
+              </span>
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Date</TableHead>
+                <TableHead className="flex items-center gap-1">
+                  Date
+                  <span className="text-xs text-gray-400">(Newest First)</span>
+                </TableHead>
                 <TableHead>Project</TableHead>
                 <TableHead>Work Description</TableHead>
+                <TableHead>Hours</TableHead>
                 <TableHead>Workers</TableHead>
                 <TableHead>Weather</TableHead>
                 <TableHead>Materials Used</TableHead>
@@ -607,8 +933,13 @@ export default function DailyLogsTab({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {dailyLogs
-                .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+              {filteredLogs
+                .sort((a, b) => {
+                  // Sort by date from newest to oldest
+                  const dateA = new Date(a.date).getTime()
+                  const dateB = new Date(b.date).getTime()
+                  return dateB - dateA
+                })
                 .map((log) => {
                   const workersPresent = Array.isArray(log.workers_present)
                     ? log.workers_present
@@ -629,7 +960,13 @@ export default function DailyLogsTab({
                         <Badge variant="outline">{getProjectName(log.project_id)}</Badge>
                       </TableCell>
                       <TableCell>
-                        <div className="max-w-xs truncate">{log.work_description}</div>
+                        <div className="max-w-xs truncate">{log.work_description || log.work_completed}</div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center">
+                          <Clock className="h-4 w-4 mr-2 text-gray-400" />
+                          <span className="text-sm">{log.hours_worked || 0}h</span>
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center">
@@ -638,7 +975,7 @@ export default function DailyLogsTab({
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="secondary">{log.weather_conditions || "N/A"}</Badge>
+                        <Badge variant="secondary">{log.weather_conditions || log.weather || "N/A"}</Badge>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center">
@@ -668,12 +1005,14 @@ export default function DailyLogsTab({
                 })}
             </TableBody>
           </Table>
-          {dailyLogs.length === 0 && (
+          {filteredLogs.length === 0 && (
             <div className="text-center py-8">
               <p className="text-gray-500">
-                {isAdmin
-                  ? "No daily logs found. Add your first log to get started!"
-                  : "No daily logs available to view."}
+                {dateFilter.quickFilter === "all"
+                  ? isAdmin
+                    ? "No daily logs found. Add your first log to get started!"
+                    : "No daily logs available to view."
+                  : "No logs found in the selected date range. Try adjusting your filter."}
               </p>
             </div>
           )}
@@ -704,10 +1043,12 @@ export default function DailyLogsTab({
 
               <div>
                 <Label className="text-sm font-medium">Work Description</Label>
-                <p className="text-sm text-gray-600 mt-1">{selectedLog.work_description}</p>
+                <p className="text-sm text-gray-600 mt-1">
+                  {selectedLog.work_description || selectedLog.work_completed}
+                </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <div>
                   <Label className="text-sm font-medium">Working Place</Label>
                   <p className="text-sm text-gray-600">{selectedLog.working_place || "Not specified"}</p>
@@ -715,14 +1056,30 @@ export default function DailyLogsTab({
                 <div>
                   <Label className="text-sm font-medium">Weather Conditions</Label>
                   <div className="mt-1">
-                    <Badge variant="secondary">{selectedLog.weather_conditions || "N/A"}</Badge>
+                    <Badge variant="secondary">{selectedLog.weather_conditions || selectedLog.weather || "N/A"}</Badge>
                   </div>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Hours Worked</Label>
+                  <p className="text-sm text-gray-600">{selectedLog.hours_worked || 0} hours</p>
                 </div>
               </div>
 
               <div>
                 <Label className="text-sm font-medium">Equipment Used</Label>
-                <p className="text-sm text-gray-600 mt-1">{selectedLog.equipment_used || "No equipment specified"}</p>
+                <div className="mt-2">
+                  {Array.isArray(selectedLog.equipment_used) && selectedLog.equipment_used.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {selectedLog.equipment_used.map((equipment: string, index: number) => (
+                        <Badge key={index} variant="outline">
+                          {equipment}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-400">No equipment specified</p>
+                  )}
+                </div>
               </div>
 
               <div>
@@ -733,7 +1090,7 @@ export default function DailyLogsTab({
                       ? selectedLog.workers_present
                       : JSON.parse(selectedLog.workers_present || "[]")
                     return workersPresent.length > 0 ? (
-                      workersPresent.map((workerId: string, index: number) => (
+                      workersPresent.map((workerId: string | number, index: number) => (
                         <Badge key={index} variant="outline">
                           {getWorkerName(workerId)}
                         </Badge>
@@ -834,7 +1191,7 @@ export default function DailyLogsTab({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <div>
                   <Label htmlFor="edit-working_place">Working Place</Label>
                   <Input
@@ -862,13 +1219,25 @@ export default function DailyLogsTab({
                     </SelectContent>
                   </Select>
                 </div>
+                <div>
+                  <Label htmlFor="edit-hours_worked">Hours Worked *</Label>
+                  <Input
+                    id="edit-hours_worked"
+                    type="number"
+                    min="0"
+                    max="24"
+                    step="0.5"
+                    value={formData.hours_worked}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, hours_worked: Number(e.target.value) || 0 }))}
+                  />
+                </div>
               </div>
 
               <div>
                 <Label htmlFor="edit-equipment_used">Equipment Used</Label>
                 <Textarea
                   id="edit-equipment_used"
-                  placeholder="List equipment and machinery used"
+                  placeholder="List equipment and machinery used (separate with commas or new lines)"
                   value={formData.equipment_used}
                   onChange={(e) => setFormData((prev) => ({ ...prev, equipment_used: e.target.value }))}
                   rows={2}
@@ -881,18 +1250,35 @@ export default function DailyLogsTab({
                   <div className="space-y-2">
                     {workers
                       .filter((worker) => worker.status === "Active")
-                      .map((worker) => (
-                        <div key={worker.id} className="flex items-center space-x-2">
-                          <Checkbox
-                            id={`edit-worker-${worker.id}`}
-                            checked={formData.workers_present.includes(worker.id)}
-                            onCheckedChange={(checked) => handleWorkerToggle(worker.id, checked as boolean)}
-                          />
-                          <Label htmlFor={`edit-worker-${worker.id}`} className="text-sm">
-                            {worker.name} - {worker.role}
-                          </Label>
-                        </div>
-                      ))}
+                      .map((worker) => {
+                        // Check if this worker should be selected using multiple comparison methods
+                        const isChecked =
+                          formData.workers_present.includes(String(worker.id)) ||
+                          formData.workers_present.includes(worker.id) ||
+                          formData.workers_present.some((id) => String(id) === String(worker.id))
+
+                        console.log(`Worker ${worker.name} (ID: ${worker.id}, type: ${typeof worker.id}):`, {
+                          isChecked,
+                          formWorkersPresent: formData.workers_present,
+                          workerIdAsString: String(worker.id),
+                        })
+
+                        return (
+                          <div key={worker.id} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`edit-worker-${worker.id}`}
+                              checked={isChecked}
+                              onCheckedChange={(checked) => {
+                                console.log(`Toggling worker ${worker.name} (${worker.id}): ${checked}`)
+                                handleWorkerToggle(String(worker.id), checked as boolean)
+                              }}
+                            />
+                            <Label htmlFor={`edit-worker-${worker.id}`} className="text-sm">
+                              {worker.name} - {worker.role}
+                            </Label>
+                          </div>
+                        )
+                      })}
                   </div>
                 </ScrollArea>
               </div>
