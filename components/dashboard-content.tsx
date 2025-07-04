@@ -918,6 +918,80 @@ export default function DashboardContent({ user }: DashboardContentProps) {
         </Tabs>
       </main>
 
+      {/* Add User Dialog */}
+      <Dialog open={showAddUserDialog} onOpenChange={setShowAddUserDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add New User</DialogTitle>
+            <DialogDescription>Create a new user account with appropriate permissions</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="new_email">Email Address *</Label>
+              <Input
+                id="new_email"
+                type="email"
+                placeholder="user@example.com"
+                value={newUserData.email}
+                onChange={(e) => setNewUserData((prev) => ({ ...prev, email: e.target.value }))}
+              />
+            </div>
+            <div>
+              <Label htmlFor="new_full_name">Full Name *</Label>
+              <Input
+                id="new_full_name"
+                type="text"
+                placeholder="Enter full name"
+                value={newUserData.full_name}
+                onChange={(e) => setNewUserData((prev) => ({ ...prev, full_name: e.target.value }))}
+              />
+            </div>
+            <div>
+              <Label htmlFor="new_password">Password *</Label>
+              <Input
+                id="new_password"
+                type="password"
+                placeholder="Enter password (min 6 characters)"
+                value={newUserData.password}
+                onChange={(e) => setNewUserData((prev) => ({ ...prev, password: e.target.value }))}
+              />
+            </div>
+            <div>
+              <Label htmlFor="new_role">Role</Label>
+              <Select
+                value={newUserData.role}
+                onValueChange={(value) => setNewUserData((prev) => ({ ...prev, role: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="user">User (View Only)</SelectItem>
+                  <SelectItem value="manager">Manager</SelectItem>
+                  <SelectItem value="supervisor">Supervisor</SelectItem>
+                  <SelectItem value="admin">Admin (Full Access)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddUserDialog(false)} disabled={creatingUser}>
+              Cancel
+            </Button>
+            <Button onClick={handleAddUser} disabled={creatingUser}>
+              {creatingUser ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Create User"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Edit User Dialog */}
       <Dialog open={showEditUserDialog} onOpenChange={setShowEditUserDialog}>
         <DialogContent>
