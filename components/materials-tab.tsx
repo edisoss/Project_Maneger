@@ -39,10 +39,15 @@ import {
   Search,
   History,
   Calendar,
-  TrendingUp,
-  TrendingDown,
   RotateCcw,
   Eye,
+  RefreshCw,
+  PackageOpen,
+  PackagePlus,
+  User,
+  FileText,
+  Building,
+  ArrowRight,
 } from "lucide-react"
 import {
   addMaterial,
@@ -525,6 +530,64 @@ export default function MaterialsTab({
       return { status: "Low Stock", variant: "outline" as const, icon: AlertTriangle }
     } else {
       return { status: "In Stock", variant: "default" as const, icon: CheckCircle }
+    }
+  }
+
+  // Get transaction type details for better visual representation
+  const getTransactionTypeDetails = (transaction: MaterialTransaction) => {
+    const type = transaction.transaction_type
+
+    switch (type) {
+      case "added":
+        return {
+          label: "Stock Added",
+          icon: PackagePlus,
+          color: "text-green-600",
+          bgColor: "bg-green-50",
+          borderColor: "border-green-200",
+          badgeVariant: "default" as const,
+          description: "Material added to inventory",
+        }
+      case "used":
+        return {
+          label: "Material Issued",
+          icon: PackageOpen,
+          color: "text-red-600",
+          bgColor: "bg-red-50",
+          borderColor: "border-red-200",
+          badgeVariant: "destructive" as const,
+          description: "Material issued for work",
+        }
+      case "returned":
+        return {
+          label: "Material Returned",
+          icon: RefreshCw,
+          color: "text-blue-600",
+          bgColor: "bg-blue-50",
+          borderColor: "border-blue-200",
+          badgeVariant: "secondary" as const,
+          description: "Material returned to inventory",
+        }
+      case "adjusted":
+        return {
+          label: "Stock Adjusted",
+          icon: RotateCcw,
+          color: "text-orange-600",
+          bgColor: "bg-orange-50",
+          borderColor: "border-orange-200",
+          badgeVariant: "outline" as const,
+          description: "Manual stock adjustment",
+        }
+      default:
+        return {
+          label: "Unknown",
+          icon: Package,
+          color: "text-gray-600",
+          bgColor: "bg-gray-50",
+          borderColor: "border-gray-200",
+          badgeVariant: "outline" as const,
+          description: "Unknown transaction type",
+        }
     }
   }
 
@@ -1112,12 +1175,17 @@ export default function MaterialsTab({
         </AlertDialog>
       )}
 
-      {/* Material History Dialog */}
+      {/* Material History Dialog - Enhanced with Visual Indicators */}
       <Dialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-6xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Material History</DialogTitle>
-            <DialogDescription>Transaction history for {selectedMaterial?.name}</DialogDescription>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="h-5 w-5" />
+              Material Transaction History
+            </DialogTitle>
+            <DialogDescription>
+              Complete transaction history for <strong>{selectedMaterial?.name}</strong>
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             {loadingHistory ? (
@@ -1125,82 +1193,120 @@ export default function MaterialsTab({
                 <Loader2 className="h-8 w-8 animate-spin" />
               </div>
             ) : materialTransactions.length > 0 ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Quantity</TableHead>
-                    <TableHead>Notes</TableHead>
-                    <TableHead>User</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {materialTransactions.map((transaction) => (
-                    <TableRow key={transaction.id}>
-                      <TableCell>
-                        <div className="flex items-center">
-                          <Calendar className="h-4 w-4 mr-2 text-gray-400" />
-                          {new Date(transaction.created_at).toLocaleDateString()}
+              <div className="space-y-3">
+                {materialTransactions.map((transaction) => {
+                  const typeDetails = getTransactionTypeDetails(transaction)
+                  const TypeIcon = typeDetails.icon
+
+                  return (
+                    <div
+                      key={transaction.id}
+                      className={`p-4 rounded-lg border-l-4 ${typeDetails.bgColor} ${typeDetails.borderColor} transition-all hover:shadow-sm`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-start gap-3 flex-1">
+                          {/* Transaction Type Icon and Badge */}
+                          <div className="flex flex-col items-center gap-2">
+                            <div
+                              className={`p-2 rounded-full ${typeDetails.bgColor} border ${typeDetails.borderColor}`}
+                            >
+                              <TypeIcon className={`h-4 w-4 ${typeDetails.color}`} />
+                            </div>
+                            <Badge variant={typeDetails.badgeVariant} className="text-xs">
+                              {typeDetails.label}
+                            </Badge>
+                          </div>
+
+                          {/* Transaction Details */}
+                          <div className="flex-1 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <h4 className={`font-medium ${typeDetails.color}`}>{typeDetails.label}</h4>
+                              <div className="flex items-center gap-2 text-sm text-gray-500">
+                                <Calendar className="h-3 w-3" />
+                                {new Date(transaction.created_at).toLocaleDateString("en-US", {
+                                  year: "numeric",
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </div>
+                            </div>
+
+                            {/* Quantity Change */}
+                            <div className="flex items-center gap-4">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm text-gray-600">Quantity:</span>
+                                <span className={`font-semibold ${typeDetails.color}`}>
+                                  {transaction.transaction_type === "added"
+                                    ? "+"
+                                    : transaction.transaction_type === "used"
+                                      ? "-"
+                                      : transaction.transaction_type === "returned"
+                                        ? "+"
+                                        : "±"}
+                                  {transaction.quantity} {selectedMaterial?.unit}
+                                </span>
+                              </div>
+
+                              {/* Stock Change Indicator */}
+                              <div className="flex items-center gap-2 text-sm">
+                                <span className="text-gray-500">Stock:</span>
+                                <span className="font-mono">
+                                  {transaction.previous_stock}
+                                  <ArrowRight className="h-3 w-3 inline mx-1" />
+                                  {transaction.new_stock} {selectedMaterial?.unit}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Additional Information */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                              {transaction.project && (
+                                <div className="flex items-center gap-2">
+                                  <Building className="h-3 w-3 text-gray-400" />
+                                  <span className="text-gray-600">Project:</span>
+                                  <span className="font-medium">{transaction.project}</span>
+                                </div>
+                              )}
+
+                              {transaction.created_by && (
+                                <div className="flex items-center gap-2">
+                                  <User className="h-3 w-3 text-gray-400" />
+                                  <span className="text-gray-600">By:</span>
+                                  <span className="font-medium">{transaction.created_by}</span>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Notes */}
+                            {transaction.notes && (
+                              <div className="flex items-start gap-2 mt-2">
+                                <FileText className="h-3 w-3 text-gray-400 mt-0.5" />
+                                <div>
+                                  <span className="text-gray-600 text-sm">Notes:</span>
+                                  <p className="text-sm text-gray-700 mt-1">{transaction.notes}</p>
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center">
-                          {transaction.type === "in" ? (
-                            <TrendingUp className="h-4 w-4 mr-2 text-green-500" />
-                          ) : transaction.type === "out" ? (
-                            <TrendingDown className="h-4 w-4 mr-2 text-red-500" />
-                          ) : (
-                            <RotateCcw className="h-4 w-4 mr-2 text-blue-500" />
-                          )}
-                          <Badge
-                            variant={
-                              transaction.type === "in"
-                                ? "default"
-                                : transaction.type === "out"
-                                  ? "destructive"
-                                  : "secondary"
-                            }
-                          >
-                            {transaction.type === "in"
-                              ? "Stock In"
-                              : transaction.type === "out"
-                                ? "Stock Out"
-                                : "Adjustment"}
-                          </Badge>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <span
-                          className={
-                            transaction.type === "in"
-                              ? "text-green-600 font-medium"
-                              : transaction.type === "out"
-                                ? "text-red-600 font-medium"
-                                : "text-blue-600 font-medium"
-                          }
-                        >
-                          {transaction.type === "in" ? "+" : transaction.type === "out" ? "-" : ""}
-                          {transaction.quantity} {selectedMaterial?.unit}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-sm text-gray-600">{transaction.notes || "-"}</span>
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-sm text-gray-600">{transaction.created_by || "System"}</span>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             ) : (
-              <div className="text-center py-8">
-                <p className="text-gray-500">No transaction history available for this material.</p>
+              <div className="text-center py-12">
+                <Package className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                <p className="text-gray-500 text-lg">No transaction history available</p>
+                <p className="text-gray-400 text-sm">
+                  Transactions will appear here once materials are used or restocked.
+                </p>
               </div>
             )}
           </div>
-          <div className="flex justify-end">
+          <div className="flex justify-end pt-4 border-t">
             <Button onClick={() => setShowHistoryDialog(false)}>Close</Button>
           </div>
         </DialogContent>

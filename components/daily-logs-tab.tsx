@@ -43,6 +43,10 @@ import {
   Eye,
   Filter,
   X,
+  CheckCircle,
+  AlertCircle,
+  Pause,
+  XCircle,
 } from "lucide-react"
 import { addDailyLog, updateDailyLog, deleteDailyLog, updateMaterial } from "@/lib/database"
 import type { DailyLog, Project, Worker, Material } from "@/lib/database"
@@ -96,10 +100,17 @@ export default function DailyLogsTab({
     weather_conditions: "",
     working_place: "",
     hours_worked: 8,
+    status: "completed",
     notes: "",
   })
 
   const weatherOptions = ["Sunny", "Cloudy", "Rainy", "Windy", "Stormy", "Foggy", "Hot", "Cold"]
+  const statusOptions = [
+    { value: "in_progress", label: "In Progress", icon: AlertCircle, color: "bg-blue-500" },
+    { value: "completed", label: "Completed", icon: CheckCircle, color: "bg-green-500" },
+    { value: "on_hold", label: "On Hold", icon: Pause, color: "bg-yellow-500" },
+    { value: "cancelled", label: "Cancelled", icon: XCircle, color: "bg-red-500" },
+  ]
 
   // Converts a comma- or newline-separated list to a trimmed string array.
   function toStringArray(value: string): string[] {
@@ -107,6 +118,11 @@ export default function DailyLogsTab({
       .split(/[,\\n]/)
       .map((s) => s.trim())
       .filter(Boolean)
+  }
+
+  // Get status configuration
+  const getStatusConfig = (status: string) => {
+    return statusOptions.find((s) => s.value === status) || statusOptions[1] // Default to completed
   }
 
   // Date filtering functions
@@ -190,6 +206,7 @@ export default function DailyLogsTab({
       weather_conditions: "Sunny",
       working_place: "",
       hours_worked: 8,
+      status: "completed",
       notes: "",
     })
   }
@@ -220,7 +237,7 @@ export default function DailyLogsTab({
         equipment_used: equipmentArray,
         hours_worked: formData.hours_worked,
         work_completed: formData.work_description,
-        status: "completed",
+        status: formData.status,
         working_place: formData.working_place,
       }
 
@@ -251,10 +268,11 @@ export default function DailyLogsTab({
       // Reload materials to reflect updated stock
       reloadMaterials()
 
+      const statusConfig = getStatusConfig(formData.status)
       logActivity({
         type: "daily_log",
         title: "Daily Log Created",
-        description: `New daily log created for ${new Date(formData.date).toLocaleDateString()}.`,
+        description: `New daily log created for ${new Date(formData.date).toLocaleDateString()} with status: ${statusConfig.label}.`,
         icon: Plus,
         variant: "default",
       })
@@ -347,6 +365,7 @@ export default function DailyLogsTab({
       weather_conditions: log.weather_conditions || log.weather || "Sunny", // Check both fields
       working_place: log.working_place || "",
       hours_worked: log.hours_worked || 8,
+      status: log.status || "completed",
       notes: log.notes || "",
     })
     setShowEditDialog(true)
@@ -384,7 +403,7 @@ export default function DailyLogsTab({
         equipment_used: equipmentArray,
         hours_worked: formData.hours_worked,
         work_completed: formData.work_description,
-        status: "completed",
+        status: formData.status,
         working_place: formData.working_place,
       }
 
@@ -394,10 +413,11 @@ export default function DailyLogsTab({
         return
       }
 
+      const statusConfig = getStatusConfig(formData.status)
       logActivity({
         type: "daily_log",
         title: "Daily Log Updated",
-        description: `Daily log for ${new Date(formData.date).toLocaleDateString()} was updated.`,
+        description: `Daily log for ${new Date(formData.date).toLocaleDateString()} was updated. Status: ${statusConfig.label}.`,
         icon: Edit,
         variant: "secondary",
       })
@@ -548,6 +568,12 @@ export default function DailyLogsTab({
   }).length
   const activeProjects = new Set(filteredLogs.map((log) => log.project_id)).size
 
+  // Status statistics
+  const statusStats = statusOptions.map((status) => ({
+    ...status,
+    count: filteredLogs.filter((log) => log.status === status.value).length,
+  }))
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -618,7 +644,7 @@ export default function DailyLogsTab({
                   />
                 </div>
 
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-4 gap-4">
                   <div>
                     <Label htmlFor="working_place">Working Place</Label>
                     <Input
@@ -657,6 +683,27 @@ export default function DailyLogsTab({
                       value={formData.hours_worked}
                       onChange={(e) => setFormData((prev) => ({ ...prev, hours_worked: Number(e.target.value) || 0 }))}
                     />
+                  </div>
+                  <div>
+                    <Label htmlFor="status">Status *</Label>
+                    <Select
+                      value={formData.status}
+                      onValueChange={(value) => setFormData((prev) => ({ ...prev, status: value }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {statusOptions.map((status) => (
+                          <SelectItem key={status.value} value={status.value}>
+                            <div className="flex items-center gap-2">
+                              <status.icon className="h-4 w-4" />
+                              {status.label}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 
@@ -929,6 +976,30 @@ export default function DailyLogsTab({
         </Card>
       </div>
 
+      {/* Status Statistics */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Log Status Overview</CardTitle>
+          <CardDescription>Distribution of daily log statuses</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {statusStats.map((status) => (
+              <div key={status.value} className="flex items-center gap-3 p-3 border rounded-lg">
+                <div className={`w-3 h-3 rounded-full ${status.color}`} />
+                <div className="flex-1">
+                  <div className="flex items-center gap-1">
+                    <status.icon className="h-4 w-4" />
+                    <span className="text-sm font-medium">{status.label}</span>
+                  </div>
+                  <div className="text-2xl font-bold">{status.count}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Daily Logs Table */}
       <Card>
         <CardHeader>
@@ -952,6 +1023,7 @@ export default function DailyLogsTab({
                 </TableHead>
                 <TableHead>Project</TableHead>
                 <TableHead>Work Description</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead>Hours</TableHead>
                 <TableHead>Workers</TableHead>
                 <TableHead>Weather</TableHead>
@@ -974,6 +1046,7 @@ export default function DailyLogsTab({
                   const materialsUsed = Array.isArray(log.materials_used)
                     ? log.materials_used
                     : JSON.parse(log.materials_used || "[]")
+                  const statusConfig = getStatusConfig(log.status || "completed")
 
                   return (
                     <TableRow key={log.id}>
@@ -988,6 +1061,12 @@ export default function DailyLogsTab({
                       </TableCell>
                       <TableCell>
                         <div className="max-w-xs truncate">{log.work_description || log.work_completed}</div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className="flex items-center gap-1 w-fit">
+                          <statusConfig.icon className="h-3 w-3" />
+                          {statusConfig.label}
+                        </Badge>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center">
@@ -1075,7 +1154,7 @@ export default function DailyLogsTab({
                 </p>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-4 gap-4">
                 <div>
                   <Label className="text-sm font-medium">Working Place</Label>
                   <p className="text-sm text-gray-600">{selectedLog.working_place || "Not specified"}</p>
@@ -1089,6 +1168,20 @@ export default function DailyLogsTab({
                 <div>
                   <Label className="text-sm font-medium">Hours Worked</Label>
                   <p className="text-sm text-gray-600">{selectedLog.hours_worked || 0} hours</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Status</Label>
+                  <div className="mt-1">
+                    {(() => {
+                      const statusConfig = getStatusConfig(selectedLog.status || "completed")
+                      return (
+                        <Badge variant="secondary" className="flex items-center gap-1 w-fit">
+                          <statusConfig.icon className="h-3 w-3" />
+                          {statusConfig.label}
+                        </Badge>
+                      )
+                    })()}
+                  </div>
                 </div>
               </div>
 
@@ -1218,7 +1311,7 @@ export default function DailyLogsTab({
                 />
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-4 gap-4">
                 <div>
                   <Label htmlFor="edit-working_place">Working Place</Label>
                   <Input
@@ -1257,6 +1350,27 @@ export default function DailyLogsTab({
                     value={formData.hours_worked}
                     onChange={(e) => setFormData((prev) => ({ ...prev, hours_worked: Number(e.target.value) || 0 }))}
                   />
+                </div>
+                <div>
+                  <Label htmlFor="edit-status">Status *</Label>
+                  <Select
+                    value={formData.status}
+                    onValueChange={(value) => setFormData((prev) => ({ ...prev, status: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {statusOptions.map((status) => (
+                        <SelectItem key={status.value} value={status.value}>
+                          <div className="flex items-center gap-2">
+                            <status.icon className="h-4 w-4" />
+                            {status.label}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
