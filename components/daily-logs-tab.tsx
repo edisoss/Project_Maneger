@@ -463,9 +463,19 @@ export default function DailyLogsTab({
     console.log(`handleWorkerToggle called: ${workerIdStr} -> ${checked}`)
 
     setFormData((prev) => {
-      const newWorkersPresent = checked
-        ? [...prev.workers_present.filter((id) => String(id) !== workerIdStr), workerIdStr]
-        : prev.workers_present.filter((id) => String(id) !== workerIdStr)
+      let newWorkersPresent: string[]
+
+      if (checked) {
+        // Add worker if not already present
+        if (!prev.workers_present.includes(workerIdStr)) {
+          newWorkersPresent = [...prev.workers_present, workerIdStr]
+        } else {
+          newWorkersPresent = prev.workers_present
+        }
+      } else {
+        // Remove worker
+        newWorkersPresent = prev.workers_present.filter((id) => String(id) !== workerIdStr)
+      }
 
       console.log("Updated workers_present:", newWorkersPresent)
       return {
@@ -667,20 +677,37 @@ export default function DailyLogsTab({
                     <div className="space-y-2">
                       {workers
                         .filter((worker) => worker.status === "Active")
-                        .map((worker) => (
-                          <div key={worker.id} className="flex items-center space-x-2">
-                            <Checkbox
-                              id={`worker-${worker.id}`}
-                              checked={formData.workers_present.includes(worker.id)}
-                              onCheckedChange={(checked) => handleWorkerToggle(worker.id, checked as boolean)}
-                            />
-                            <Label htmlFor={`worker-${worker.id}`} className="text-sm">
-                              {worker.name} - {worker.role}
-                            </Label>
-                          </div>
-                        ))}
+                        .map((worker) => {
+                          const isChecked = formData.workers_present.includes(String(worker.id))
+                          console.log(`Add Dialog - Worker ${worker.name} (ID: ${worker.id}):`, {
+                            isChecked,
+                            formWorkersPresent: formData.workers_present,
+                            workerIdAsString: String(worker.id),
+                          })
+
+                          return (
+                            <div key={worker.id} className="flex items-center space-x-2">
+                              <Checkbox
+                                id={`worker-${worker.id}`}
+                                checked={isChecked}
+                                onCheckedChange={(checked) => {
+                                  console.log(`Add Dialog - Toggling worker ${worker.name} (${worker.id}): ${checked}`)
+                                  handleWorkerToggle(String(worker.id), checked as boolean)
+                                }}
+                              />
+                              <Label htmlFor={`worker-${worker.id}`} className="text-sm cursor-pointer">
+                                {worker.name} - {worker.role}
+                              </Label>
+                            </div>
+                          )
+                        })}
                     </div>
                   </ScrollArea>
+                  {formData.workers_present.length > 0 && (
+                    <div className="mt-2 text-sm text-gray-600">
+                      Selected: {formData.workers_present.length} worker(s)
+                    </div>
+                  )}
                 </div>
 
                 <div>
