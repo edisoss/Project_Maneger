@@ -107,6 +107,9 @@ export default function MaterialsTab({
   const [newCategoryName, setNewCategoryName] = useState("")
   const [newLocationName, setNewLocationName] = useState("")
 
+  const [showTopUpDialog, setShowTopUpDialog] = useState(false)
+  const [topUpQuantity, setTopUpQuantity] = useState(0)
+
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -591,6 +594,56 @@ export default function MaterialsTab({
     }
   }
 
+  const handleTopUp = (material: Material) => {
+    setSelectedMaterial(material)
+    setTopUpQuantity(0)
+    setShowTopUpDialog(true)
+  }
+
+  const handleConfirmTopUp = async () => {
+    if (!selectedMaterial || topUpQuantity <= 0) {
+      toast({ title: "Error", description: "Please enter a valid quantity", variant: "destructive" })
+      return
+    }
+
+    if (!isAdmin) {
+      toast({ title: "Access Denied", description: "Only administrators can top up materials", variant: "destructive" })
+      return
+    }
+
+    try {
+      setSaving(true)
+
+      const newStock = selectedMaterial.current_stock + topUpQuantity
+      const updatedMaterial = await updateMaterial(selectedMaterial.id, { current_stock: newStock })
+
+      if (!updatedMaterial) {
+        toast({ title: "Error", description: "Failed to top up material", variant: "destructive" })
+        return
+      }
+
+      // Log activity for top-up
+      logActivity({
+        type: "material",
+        title: "Material Topped Up",
+        description: `${topUpQuantity} ${selectedMaterial.unit} added to "${selectedMaterial.name}". New stock: ${newStock} ${selectedMaterial.unit}`,
+        icon: Plus,
+        variant: "default",
+      })
+
+      setMaterials(materials.map((material) => (material.id === selectedMaterial.id ? updatedMaterial : material)))
+      setShowTopUpDialog(false)
+      setSelectedMaterial(null)
+      setTopUpQuantity(0)
+      toast({ title: "Success", description: "Material topped up successfully!" })
+    } catch (error) {
+      console.error("Error topping up material:", error)
+      toast({ title: "Error", description: "Error topping up material", variant: "destructive" })
+    } finally {
+      setSaving(false)
+    }
+  }
+
   // Filter materials based on search and filters
   const filteredMaterials = materials.filter((material) => {
     const matchesSearch = material.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -909,6 +962,9 @@ export default function MaterialsTab({
                     </TableCell>
                     <TableCell>
                       <div className="flex space-x-2">
+                        <Button variant="outline" size="sm" onClick={() => handleTopUp(material)}>
+                          <Plus className="h-3 w-3" />
+                        </Button>
                         <Button variant="outline" size="sm" onClick={() => handleView(material)}>
                           <Eye className="h-3 w-3" />
                         </Button>
@@ -1397,6 +1453,62 @@ export default function MaterialsTab({
 
             <div className="flex justify-end">
               <Button onClick={() => setShowCategoriesDialog(false)}>Close</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Top Up Dialog */}
+      {isAdmin && (
+        <Dialog open={showTopUpDialog} onOpenChange={setShowTopUpDialog}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Top Up Material</DialogTitle>
+              <DialogDescription>Add stock to {selectedMaterial?.name}</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label className="text-sm font-medium">Current Stock</Label>
+                <p className="text-sm text-gray-600">
+                  {selectedMaterial?.current_stock} {selectedMaterial?.unit}
+                </p>
+              </div>
+              <div>
+                <Label htmlFor="topup-quantity">Quantity to Add *</Label>
+                <Input
+                  id="topup-quantity"
+                  type="number"
+                  min="1"
+                  value={topUpQuantity}
+                  onChange={(e) => setTopUpQuantity(Number.parseFloat(e.target.value) || 0)}
+                  placeholder="Enter quantity to add"
+                />
+              </div>
+              {topUpQuantity > 0 && selectedMaterial && (
+                <div className="p-3 bg-green-50 border border-green-200 rounded">
+                  <p className="text-sm text-green-800">
+                    New stock will be:{" "}
+                    <strong>
+                      {selectedMaterial.current_stock + topUpQuantity} {selectedMaterial.unit}
+                    </strong>
+                  </p>
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => setShowTopUpDialog(false)} disabled={saving}>
+                Cancel
+              </Button>
+              <Button onClick={handleConfirmTopUp} disabled={saving || topUpQuantity <= 0}>
+                {saving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Adding...
+                  </>
+                ) : (
+                  "Add Stock"
+                )}
+              </Button>
             </div>
           </DialogContent>
         </Dialog>
