@@ -1,6 +1,9 @@
 import { createClientClient } from "./supabase-client"
 import { createAdminClient } from "./supabase-admin"
 
+// --- utility --------------------------------------------------------------
+const toInt = (n: number) => Math.max(0, Math.round(n))
+
 export interface Material {
   id: string
   name: string
@@ -527,8 +530,12 @@ export async function getMaterialTransactions(materialId?: string): Promise<Mate
   }
 }
 
+// ---------------------------------------------------------------------------
+// Material Transactions
+// ---------------------------------------------------------------------------
+
 export async function addMaterialTransaction(
-  transaction: Omit<MaterialTransaction, "id" | "created_at">,
+  tx: Omit<MaterialTransaction, "id" | "created_at">,
 ): Promise<MaterialTransaction | null> {
   try {
     const supabase = createClientClient()
@@ -537,7 +544,15 @@ export async function addMaterialTransaction(
       return null
     }
 
-    const { data, error } = await supabase.from("material_transactions").insert([transaction]).select().single()
+    // Always store integers in integer columns
+    const safeTx = {
+      ...tx,
+      quantity: toInt(tx.quantity),
+      previous_stock: toInt(tx.previous_stock),
+      new_stock: toInt(tx.new_stock),
+    }
+
+    const { data, error } = await supabase.from("material_transactions").insert([safeTx]).select().single()
 
     if (error) {
       console.error("Error adding material transaction:", {
@@ -698,7 +713,7 @@ export async function addDailyLog(logData: {
           }
 
           if (currentMaterial) {
-            const newStock = Math.max(0, currentMaterial.current_stock - material.quantity)
+            const newStock = toInt(currentMaterial.current_stock - material.quantity)
             console.log(`Updating stock for ${material.material_id}: ${currentMaterial.current_stock} -> ${newStock}`)
 
             // Update material stock
@@ -844,7 +859,7 @@ export async function updateDailyLog(id: string, updates: Partial<DailyLog>): Pr
         }
 
         // Update stock based on net change
-        const newStock = Math.max(0, currentMaterial.current_stock - netChange)
+        const newStock = toInt(currentMaterial.current_stock - netChange)
         console.log(`Updating stock for ${materialId}: ${currentMaterial.current_stock} -> ${newStock}`)
 
         // Update material stock
@@ -917,7 +932,7 @@ export async function deleteDailyLog(id: string): Promise<boolean> {
             .single()
 
           if (currentMaterial) {
-            const restoredStock = currentMaterial.current_stock + material.quantity
+            const restoredStock = toInt(currentMaterial.current_stock + material.quantity)
             console.log(
               `Restoring stock for ${material.material_id}: ${currentMaterial.current_stock} + ${material.quantity} = ${restoredStock}`,
             )
