@@ -47,6 +47,7 @@ import {
   AlertCircle,
   Pause,
   XCircle,
+  Building,
 } from "lucide-react"
 import { addDailyLog, updateDailyLog, deleteDailyLog, updateMaterial } from "@/lib/database"
 import type { DailyLog, Project, Worker, Material } from "@/lib/database"
@@ -89,6 +90,9 @@ export default function DailyLogsTab({
     toDate: "",
     quickFilter: "all" as "all" | "today" | "week" | "month" | "custom",
   })
+
+  // Project filtering state
+  const [projectFilter, setProjectFilter] = useState("all")
 
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split("T")[0],
@@ -175,25 +179,42 @@ export default function DailyLogsTab({
     })
   }
 
-  // Filter logs based on date range
+  const clearAllFilters = () => {
+    setDateFilter({
+      fromDate: "",
+      toDate: "",
+      quickFilter: "all",
+    })
+    setProjectFilter("all")
+  }
+
+  // Filter logs based on date range and project
   const filteredLogs = useMemo(() => {
-    if (dateFilter.quickFilter === "all" && !dateFilter.fromDate && !dateFilter.toDate) {
-      return dailyLogs
+    let filtered = dailyLogs
+
+    // Apply date filter
+    if (dateFilter.quickFilter !== "all" || dateFilter.fromDate || dateFilter.toDate) {
+      filtered = filtered.filter((log) => {
+        const logDate = new Date(log.date)
+        const logDateStr = logDate.toISOString().split("T")[0]
+
+        if (dateFilter.fromDate && logDateStr < dateFilter.fromDate) {
+          return false
+        }
+        if (dateFilter.toDate && logDateStr > dateFilter.toDate) {
+          return false
+        }
+        return true
+      })
     }
 
-    return dailyLogs.filter((log) => {
-      const logDate = new Date(log.date)
-      const logDateStr = logDate.toISOString().split("T")[0]
+    // Apply project filter
+    if (projectFilter !== "all") {
+      filtered = filtered.filter((log) => log.project_id === projectFilter)
+    }
 
-      if (dateFilter.fromDate && logDateStr < dateFilter.fromDate) {
-        return false
-      }
-      if (dateFilter.toDate && logDateStr > dateFilter.toDate) {
-        return false
-      }
-      return true
-    })
-  }, [dailyLogs, dateFilter])
+    return filtered
+  }, [dailyLogs, dateFilter, projectFilter])
 
   const resetForm = () => {
     setFormData({
@@ -574,6 +595,10 @@ export default function DailyLogsTab({
     count: filteredLogs.filter((log) => log.status === status.value).length,
   }))
 
+  // Check if any filters are active
+  const hasActiveFilters =
+    dateFilter.quickFilter !== "all" || dateFilter.fromDate || dateFilter.toDate || projectFilter !== "all"
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -836,94 +861,146 @@ export default function DailyLogsTab({
         )}
       </div>
 
-      {/* Date Filter Controls */}
+      {/* Filter Controls */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Filter className="h-5 w-5" />
-            Filter by Date
+            Filter Daily Logs
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {/* Quick Filter Buttons */}
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant={dateFilter.quickFilter === "all" ? "default" : "outline"}
-                size="sm"
-                onClick={() => handleQuickFilter("all")}
-              >
-                All Logs
-              </Button>
-              <Button
-                variant={dateFilter.quickFilter === "today" ? "default" : "outline"}
-                size="sm"
-                onClick={() => handleQuickFilter("today")}
-              >
-                Today
-              </Button>
-              <Button
-                variant={dateFilter.quickFilter === "week" ? "default" : "outline"}
-                size="sm"
-                onClick={() => handleQuickFilter("week")}
-              >
-                This Week
-              </Button>
-              <Button
-                variant={dateFilter.quickFilter === "month" ? "default" : "outline"}
-                size="sm"
-                onClick={() => handleQuickFilter("month")}
-              >
-                This Month
-              </Button>
-              <Button
-                variant={dateFilter.quickFilter === "custom" ? "default" : "outline"}
-                size="sm"
-                onClick={() => handleQuickFilter("custom")}
-              >
-                Custom Range
-              </Button>
-              {(dateFilter.fromDate || dateFilter.toDate) && (
-                <Button variant="ghost" size="sm" onClick={clearDateFilter}>
-                  <X className="h-4 w-4 mr-1" />
-                  Clear Filter
+          <div className="space-y-6">
+            {/* Date Filter Section */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4" />
+                <Label className="text-sm font-medium">Filter by Date</Label>
+              </div>
+
+              {/* Quick Filter Buttons */}
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant={dateFilter.quickFilter === "all" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handleQuickFilter("all")}
+                >
+                  All Dates
                 </Button>
+                <Button
+                  variant={dateFilter.quickFilter === "today" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handleQuickFilter("today")}
+                >
+                  Today
+                </Button>
+                <Button
+                  variant={dateFilter.quickFilter === "week" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handleQuickFilter("week")}
+                >
+                  This Week
+                </Button>
+                <Button
+                  variant={dateFilter.quickFilter === "month" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handleQuickFilter("month")}
+                >
+                  This Week
+                </Button>
+                <Button
+                  variant={dateFilter.quickFilter === "month" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handleQuickFilter("month")}
+                >
+                  This Month
+                </Button>
+                <Button
+                  variant={dateFilter.quickFilter === "custom" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handleQuickFilter("custom")}
+                >
+                  Custom Range
+                </Button>
+              </div>
+
+              {/* Custom Date Range Inputs */}
+              {dateFilter.quickFilter === "custom" && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="fromDate">From Date</Label>
+                    <Input
+                      id="fromDate"
+                      type="date"
+                      value={dateFilter.fromDate}
+                      onChange={(e) => setDateFilter((prev) => ({ ...prev, fromDate: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="toDate">To Date</Label>
+                    <Input
+                      id="toDate"
+                      type="date"
+                      value={dateFilter.toDate}
+                      onChange={(e) => setDateFilter((prev) => ({ ...prev, toDate: e.target.value }))}
+                    />
+                  </div>
+                </div>
               )}
             </div>
 
-            {/* Custom Date Range Inputs */}
-            {dateFilter.quickFilter === "custom" && (
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="fromDate">From Date</Label>
-                  <Input
-                    id="fromDate"
-                    type="date"
-                    value={dateFilter.fromDate}
-                    onChange={(e) => setDateFilter((prev) => ({ ...prev, fromDate: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="toDate">To Date</Label>
-                  <Input
-                    id="toDate"
-                    type="date"
-                    value={dateFilter.toDate}
-                    onChange={(e) => setDateFilter((prev) => ({ ...prev, toDate: e.target.value }))}
-                  />
-                </div>
+            {/* Project Filter Section */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Building className="h-4 w-4" />
+                <Label className="text-sm font-medium">Filter by Project</Label>
               </div>
-            )}
 
-            {/* Filter Summary */}
-            {(dateFilter.fromDate || dateFilter.toDate) && (
-              <div className="text-sm text-gray-600">
-                Showing logs from{" "}
-                {dateFilter.fromDate ? new Date(dateFilter.fromDate).toLocaleDateString() : "beginning"} to{" "}
-                {dateFilter.toDate ? new Date(dateFilter.toDate).toLocaleDateString() : "end"} ({filteredLogs.length}{" "}
-                logs found)
+              <div className="max-w-xs">
+                <Select value={projectFilter} onValueChange={setProjectFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Projects" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Projects</SelectItem>
+                    {projects.map((project) => (
+                      <SelectItem key={project.id} value={project.id}>
+                        {project.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-            )}
+            </div>
+
+            {/* Filter Summary and Clear Button */}
+            <div className="flex items-center justify-between pt-4 border-t">
+              <div className="text-sm text-gray-600">
+                {hasActiveFilters ? (
+                  <>
+                    Showing {filteredLogs.length} of {dailyLogs.length} logs
+                    {dateFilter.fromDate && dateFilter.toDate && (
+                      <span className="ml-2">
+                        from {new Date(dateFilter.fromDate).toLocaleDateString()} to{" "}
+                        {new Date(dateFilter.toDate).toLocaleDateString()}
+                      </span>
+                    )}
+                    {projectFilter !== "all" && (
+                      <span className="ml-2">for project: {getProjectName(projectFilter)}</span>
+                    )}
+                  </>
+                ) : (
+                  `Showing all ${dailyLogs.length} logs`
+                )}
+              </div>
+
+              {hasActiveFilters && (
+                <Button variant="ghost" size="sm" onClick={clearAllFilters}>
+                  <X className="h-4 w-4 mr-1" />
+                  Clear All Filters
+                </Button>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -932,16 +1009,12 @@ export default function DailyLogsTab({
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              {dateFilter.quickFilter === "all" ? "Total Logs" : "Filtered Logs"}
-            </CardTitle>
+            <CardTitle className="text-sm font-medium">{hasActiveFilters ? "Filtered Logs" : "Total Logs"}</CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalLogs}</div>
-            <p className="text-xs text-muted-foreground">
-              {dateFilter.quickFilter === "all" ? "All time" : "In selected range"}
-            </p>
+            <p className="text-xs text-muted-foreground">{hasActiveFilters ? "In selected filters" : "All time"}</p>
           </CardContent>
         </Card>
         <Card>
@@ -1114,11 +1187,11 @@ export default function DailyLogsTab({
           {filteredLogs.length === 0 && (
             <div className="text-center py-8">
               <p className="text-gray-500">
-                {dateFilter.quickFilter === "all"
-                  ? isAdmin
+                {hasActiveFilters
+                  ? "No logs found matching the selected filters. Try adjusting your filter criteria."
+                  : isAdmin
                     ? "No daily logs found. Add your first log to get started!"
-                    : "No daily logs available to view."
-                  : "No logs found in the selected date range. Try adjusting your filter."}
+                    : "No daily logs available to view."}
               </p>
             </div>
           )}
@@ -1511,13 +1584,14 @@ export default function DailyLogsTab({
                 undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
+
             <AlertDialogFooter>
               <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
               <AlertDialogAction onClick={confirmDelete} disabled={deleting}>
                 {deleting ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Deleting...
+                    Deleting…
                   </>
                 ) : (
                   "Delete"
