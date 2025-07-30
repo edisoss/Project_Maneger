@@ -48,6 +48,9 @@ import {
   Pause,
   XCircle,
   Building,
+  Info,
+  Lock,
+  Unlock,
 } from "lucide-react"
 import { addDailyLog, updateDailyLog, deleteDailyLog, updateMaterial } from "@/lib/database"
 import type { DailyLog, Project, Worker, Material } from "@/lib/database"
@@ -99,7 +102,7 @@ export default function DailyLogsTab({
     project_id: "",
     workers_present: [] as string[],
     work_description: "",
-    materials_used: [] as { material_id: string; quantity: number }[],
+    materials_used: [] as { material_id: string; actual_quantity: number; visible_quantity: number }[],
     equipment_used: "",
     weather_conditions: "",
     working_place: "",
@@ -268,18 +271,18 @@ export default function DailyLogsTab({
         return
       }
 
-      // Update material stock for used materials
+      // Update material stock for used materials using actual quantities
       for (const materialUsed of formData.materials_used) {
         const material = materials.find((m) => m.id === materialUsed.material_id)
-        if (material && materialUsed.quantity > 0) {
-          const newStock = Math.max(0, material.current_stock - materialUsed.quantity)
+        if (material && materialUsed.actual_quantity > 0) {
+          const newStock = Math.max(0, material.current_stock - materialUsed.actual_quantity)
           await updateMaterial(material.id, { current_stock: newStock })
 
-          // Log material usage activity
+          // Log material usage activity with both quantities
           logActivity({
             type: "material",
             title: "Material Used",
-            description: `${materialUsed.quantity} ${material.unit} of ${material.name} used in daily log. Remaining: ${newStock} ${material.unit}`,
+            description: `${materialUsed.actual_quantity} ${material.unit} of ${material.name} used in daily log (Visible: ${materialUsed.visible_quantity} ${material.unit}). Remaining: ${newStock} ${material.unit}`,
             icon: Package,
             variant: newStock <= material.min_stock ? "destructive" : "secondary",
           })
@@ -349,14 +352,28 @@ export default function DailyLogsTab({
       workersPresent = []
     }
 
-    // Parse materials_used - handle both array and JSON string formats
-    let materialsUsed: { material_id: string; quantity: number }[] = []
+    // Parse materials_used - handle both old and new formats
+    let materialsUsed: { material_id: string; actual_quantity: number; visible_quantity: number }[] = []
     try {
       if (Array.isArray(log.materials_used)) {
-        materialsUsed = log.materials_used
+        materialsUsed = log.materials_used.map((material) => ({
+          material_id: material.material_id,
+          // Handle backward compatibility - if old format, use quantity for both
+          actual_quantity: material.actual_quantity !== undefined ? material.actual_quantity : material.quantity || 0,
+          visible_quantity:
+            material.visible_quantity !== undefined ? material.visible_quantity : material.quantity || 0,
+        }))
       } else if (typeof log.materials_used === "string") {
         const parsed = JSON.parse(log.materials_used || "[]")
-        materialsUsed = Array.isArray(parsed) ? parsed : []
+        materialsUsed = Array.isArray(parsed)
+          ? parsed.map((material) => ({
+              material_id: material.material_id,
+              actual_quantity:
+                material.actual_quantity !== undefined ? material.actual_quantity : material.quantity || 0,
+              visible_quantity:
+                material.visible_quantity !== undefined ? material.visible_quantity : material.quantity || 0,
+            }))
+          : []
       }
     } catch (e) {
       console.error("Error parsing materials_used:", e)
@@ -526,13 +543,30 @@ export default function DailyLogsTab({
     })
   }
 
-  const handleMaterialChange = (materialId: string, quantity: number) => {
-    setFormData((prev) => ({
-      ...prev,
-      materials_used: prev.materials_used.some((m) => m.material_id === materialId)
-        ? prev.materials_used.map((m) => (m.material_id === materialId ? { ...m, quantity } : m))
-        : [...prev.materials_used, { material_id: materialId, quantity }],
-    }))
+  const handleMaterialChange = (materialId: string, actualQuantity: number, visibleQuantity: number) => {
+    setFormData((prev) => {
+      const existingIndex = prev.materials_used.findIndex((m) => m.material_id === materialId)
+
+      if (existingIndex >= 0) {
+        // Update existing material
+        const updatedMaterials = [...prev.materials_used]
+        updatedMaterials[existingIndex] = {
+          ...updatedMaterials[existingIndex],
+          actual_quantity: actualQuantity,
+          visible_quantity: visibleQuantity,
+        }
+        return { ...prev, materials_used: updatedMaterials }
+      } else {
+        // Add new material
+        return {
+          ...prev,
+          materials_used: [
+            ...prev.materials_used,
+            { material_id: materialId, actual_quantity: actualQuantity, visible_quantity: visibleQuantity },
+          ],
+        }
+      }
+    })
   }
 
   const removeMaterial = (materialId: string) => {
@@ -605,7 +639,7 @@ export default function DailyLogsTab({
         <div>
           <h2 className="text-2xl font-bold">Daily Logs Management</h2>
           <p className="text-gray-600">
-            Track daily work progress and material usage
+            Track daily work progress and material usage with dual tracking
             {!isAdmin && " (View Only)"}
           </p>
         </div>
@@ -625,7 +659,7 @@ export default function DailyLogsTab({
             <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Add Daily Log</DialogTitle>
-                <DialogDescription>Record daily work progress and material usage</DialogDescription>
+                <DialogDescription>Record daily work progress and material usage with dual tracking</DialogDescription>
               </DialogHeader>
               <div className="space-y-6">
                 <div className="grid grid-cols-2 gap-4">
@@ -783,34 +817,98 @@ export default function DailyLogsTab({
                 </div>
 
                 <div>
-                  <Label>Materials Used</Label>
-                  <div className="space-y-2">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Label>Materials Used</Label>
+                    <div className="flex items-center gap-1 text-xs text-gray-500 bg-blue-50 px-2 py-1 rounded">
+                      <Info className="h-3 w-3" />
+                      Dual tracking: Actual usage affects inventory, Visible usage shown to non-admins
+                    </div>
+                  </div>
+                  <div className="space-y-3">
                     {formData.materials_used.map((materialUsed, index) => {
                       const material = materials.find((m) => m.id === materialUsed.material_id)
                       return (
-                        <div key={index} className="flex items-center gap-2 p-2 border rounded">
-                          <span className="flex-1">{getMaterialName(materialUsed.material_id)}</span>
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.1"
-                            value={materialUsed.quantity}
-                            onChange={(e) =>
-                              handleMaterialChange(materialUsed.material_id, Number.parseFloat(e.target.value) || 0)
-                            }
-                            className="w-24"
-                          />
-                          <span className="text-sm text-gray-500">{getMaterialUnit(materialUsed.material_id)}</span>
-                          <Button variant="outline" size="sm" onClick={() => removeMaterial(materialUsed.material_id)}>
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
+                        <div key={index} className="p-4 border rounded-lg bg-gray-50">
+                          <div className="flex items-center justify-between mb-3">
+                            <span className="font-medium">{getMaterialName(materialUsed.material_id)}</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeMaterial(materialUsed.material_id)}
+                              className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <Label
+                                htmlFor={`material-actual-${materialUsed.material_id}`}
+                                className="text-xs flex items-center gap-1"
+                              >
+                                <Lock className="h-3 w-3" />
+                                Actual Usage (Internal)
+                              </Label>
+                              <div className="flex items-center">
+                                <Input
+                                  id={`material-actual-${materialUsed.material_id}`}
+                                  type="number"
+                                  min="0"
+                                  step="0.1"
+                                  value={materialUsed.actual_quantity}
+                                  onChange={(e) =>
+                                    handleMaterialChange(
+                                      materialUsed.material_id,
+                                      Number.parseFloat(e.target.value) || 0,
+                                      materialUsed.visible_quantity,
+                                    )
+                                  }
+                                  className="flex-1"
+                                />
+                                <span className="text-sm text-gray-500 ml-2 w-12">
+                                  {getMaterialUnit(materialUsed.material_id)}
+                                </span>
+                              </div>
+                              <div className="text-xs text-gray-500 mt-1">Affects inventory calculations</div>
+                            </div>
+                            <div>
+                              <Label
+                                htmlFor={`material-visible-${materialUsed.material_id}`}
+                                className="text-xs flex items-center gap-1"
+                              >
+                                <Unlock className="h-3 w-3" />
+                                Visible Usage (Public)
+                              </Label>
+                              <div className="flex items-center">
+                                <Input
+                                  id={`material-visible-${materialUsed.material_id}`}
+                                  type="number"
+                                  min="0"
+                                  step="0.1"
+                                  value={materialUsed.visible_quantity}
+                                  onChange={(e) =>
+                                    handleMaterialChange(
+                                      materialUsed.material_id,
+                                      materialUsed.actual_quantity,
+                                      Number.parseFloat(e.target.value) || 0,
+                                    )
+                                  }
+                                  className="flex-1"
+                                />
+                                <span className="text-sm text-gray-500 ml-2 w-12">
+                                  {getMaterialUnit(materialUsed.material_id)}
+                                </span>
+                              </div>
+                              <div className="text-xs text-gray-500 mt-1">Shown to non-admin users</div>
+                            </div>
+                          </div>
                         </div>
                       )
                     })}
                     <Select
                       onValueChange={(materialId) => {
                         if (!formData.materials_used.some((m) => m.material_id === materialId)) {
-                          handleMaterialChange(materialId, 0)
+                          handleMaterialChange(materialId, 0, 0)
                         }
                       }}
                     >
@@ -898,13 +996,6 @@ export default function DailyLogsTab({
                   variant={dateFilter.quickFilter === "week" ? "default" : "outline"}
                   size="sm"
                   onClick={() => handleQuickFilter("week")}
-                >
-                  This Week
-                </Button>
-                <Button
-                  variant={dateFilter.quickFilter === "month" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => handleQuickFilter("month")}
                 >
                   This Week
                 </Button>
@@ -1078,7 +1169,9 @@ export default function DailyLogsTab({
         <CardHeader>
           <CardTitle>Daily Work Logs</CardTitle>
           <CardDescription>
-            {isAdmin ? "Track daily work progress and material usage" : "View daily work progress and material usage"}
+            {isAdmin
+              ? "Track daily work progress and material usage with dual tracking"
+              : "View daily work progress and material usage"}
             {filteredLogs.length !== dailyLogs.length && (
               <span className="ml-2 text-blue-600">
                 (Showing {filteredLogs.length} of {dailyLogs.length} logs)
@@ -1116,9 +1209,17 @@ export default function DailyLogsTab({
                   const workersPresent = Array.isArray(log.workers_present)
                     ? log.workers_present
                     : JSON.parse(log.workers_present || "[]")
-                  const materialsUsed = Array.isArray(log.materials_used)
-                    ? log.materials_used
-                    : JSON.parse(log.materials_used || "[]")
+
+                  // Parse materials_used and handle both old and new formats
+                  let materialsUsed = log.materials_used
+                  if (typeof materialsUsed === "string") {
+                    try {
+                      materialsUsed = JSON.parse(materialsUsed)
+                    } catch (e) {
+                      materialsUsed = []
+                    }
+                  }
+
                   const statusConfig = getStatusConfig(log.status || "completed")
 
                   return (
@@ -1157,9 +1258,19 @@ export default function DailyLogsTab({
                         <Badge variant="secondary">{log.weather_conditions || log.weather || "N/A"}</Badge>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center">
+                        <div className="flex items-center gap-1">
                           <Package className="h-4 w-4 mr-2 text-gray-400" />
-                          <span className="text-sm">{materialsUsed.length} items</span>
+                          <span className="text-sm">
+                            {Array.isArray(materialsUsed) ? materialsUsed.length : 0} items
+                          </span>
+                          {isAdmin &&
+                            Array.isArray(materialsUsed) &&
+                            materialsUsed.some((m) => m.actual_quantity !== m.visible_quantity) && (
+                              <div className="flex items-center gap-1 text-xs text-blue-600">
+                                <Lock className="h-3 w-3" />
+                                <span>Dual</span>
+                              </div>
+                            )}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -1299,19 +1410,56 @@ export default function DailyLogsTab({
                 <Label className="text-sm font-medium">Materials Used</Label>
                 <div className="mt-2">
                   {(() => {
-                    const materialsUsed = Array.isArray(selectedLog.materials_used)
-                      ? selectedLog.materials_used
-                      : JSON.parse(selectedLog.materials_used || "[]")
-                    return materialsUsed.length > 0 ? (
+                    let materialsUsed = selectedLog.materials_used
+                    if (typeof materialsUsed === "string") {
+                      try {
+                        materialsUsed = JSON.parse(materialsUsed)
+                      } catch (e) {
+                        materialsUsed = []
+                      }
+                    }
+
+                    return Array.isArray(materialsUsed) && materialsUsed.length > 0 ? (
                       <div className="space-y-2">
-                        {materialsUsed.map((materialUsed: any, index: number) => (
-                          <div key={index} className="flex items-center justify-between p-2 border rounded">
-                            <span className="font-medium">{getMaterialName(materialUsed.material_id)}</span>
-                            <span className="text-sm text-gray-600">
-                              {materialUsed.quantity} {getMaterialUnit(materialUsed.material_id)}
-                            </span>
-                          </div>
-                        ))}
+                        {materialsUsed.map((materialUsed: any, index: number) => {
+                          // Handle both old and new formats
+                          const actualQty =
+                            materialUsed.actual_quantity !== undefined
+                              ? materialUsed.actual_quantity
+                              : materialUsed.quantity || 0
+                          const visibleQty =
+                            materialUsed.visible_quantity !== undefined
+                              ? materialUsed.visible_quantity
+                              : materialUsed.quantity || 0
+                          const hasDualTracking = actualQty !== visibleQty
+
+                          return (
+                            <div key={index} className="flex items-center justify-between p-3 border rounded">
+                              <div className="flex flex-col">
+                                <span className="font-medium">{getMaterialName(materialUsed.material_id)}</span>
+                                {hasDualTracking && isAdmin && (
+                                  <div className="text-xs text-gray-500 mt-1 flex items-center gap-2">
+                                    <div className="flex items-center gap-1">
+                                      <Lock className="h-3 w-3" />
+                                      <span>
+                                        Actual: {actualQty} {getMaterialUnit(materialUsed.material_id)}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <Unlock className="h-3 w-3" />
+                                      <span>
+                                        Visible: {visibleQty} {getMaterialUnit(materialUsed.material_id)}
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                              <span className="text-sm text-gray-600">
+                                {isAdmin ? actualQty : visibleQty} {getMaterialUnit(materialUsed.material_id)}
+                              </span>
+                            </div>
+                          )
+                        })}
                       </div>
                     ) : (
                       <span className="text-gray-400 text-sm">No materials used</span>
@@ -1340,7 +1488,7 @@ export default function DailyLogsTab({
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Edit Daily Log</DialogTitle>
-              <DialogDescription>Update daily work progress and material usage</DialogDescription>
+              <DialogDescription>Update daily work progress and material usage with dual tracking</DialogDescription>
             </DialogHeader>
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-4">
@@ -1498,31 +1646,95 @@ export default function DailyLogsTab({
               </div>
 
               <div>
-                <Label>Materials Used</Label>
-                <div className="space-y-2">
+                <div className="flex items-center gap-2 mb-3">
+                  <Label>Materials Used</Label>
+                  <div className="flex items-center gap-1 text-xs text-gray-500 bg-blue-50 px-2 py-1 rounded">
+                    <Info className="h-3 w-3" />
+                    Dual tracking: Actual usage affects inventory, Visible usage shown to non-admins
+                  </div>
+                </div>
+                <div className="space-y-3">
                   {formData.materials_used.map((materialUsed, index) => (
-                    <div key={index} className="flex items-center gap-2 p-2 border rounded">
-                      <span className="flex-1">{getMaterialName(materialUsed.material_id)}</span>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.1"
-                        value={materialUsed.quantity}
-                        onChange={(e) =>
-                          handleMaterialChange(materialUsed.material_id, Number.parseFloat(e.target.value) || 0)
-                        }
-                        className="w-24"
-                      />
-                      <span className="text-sm text-gray-500">{getMaterialUnit(materialUsed.material_id)}</span>
-                      <Button variant="outline" size="sm" onClick={() => removeMaterial(materialUsed.material_id)}>
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                    <div key={index} className="p-4 border rounded-lg bg-gray-50">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="font-medium">{getMaterialName(materialUsed.material_id)}</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeMaterial(materialUsed.material_id)}
+                          className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label
+                            htmlFor={`edit-material-actual-${materialUsed.material_id}`}
+                            className="text-xs flex items-center gap-1"
+                          >
+                            <Lock className="h-3 w-3" />
+                            Actual Usage (Internal)
+                          </Label>
+                          <div className="flex items-center">
+                            <Input
+                              id={`edit-material-actual-${materialUsed.material_id}`}
+                              type="number"
+                              min="0"
+                              step="0.1"
+                              value={materialUsed.actual_quantity}
+                              onChange={(e) =>
+                                handleMaterialChange(
+                                  materialUsed.material_id,
+                                  Number.parseFloat(e.target.value) || 0,
+                                  materialUsed.visible_quantity,
+                                )
+                              }
+                              className="flex-1"
+                            />
+                            <span className="text-sm text-gray-500 ml-2 w-12">
+                              {getMaterialUnit(materialUsed.material_id)}
+                            </span>
+                          </div>
+                          <div className="text-xs text-gray-500 mt-1">Affects inventory calculations</div>
+                        </div>
+                        <div>
+                          <Label
+                            htmlFor={`edit-material-visible-${materialUsed.material_id}`}
+                            className="text-xs flex items-center gap-1"
+                          >
+                            <Unlock className="h-3 w-3" />
+                            Visible Usage (Public)
+                          </Label>
+                          <div className="flex items-center">
+                            <Input
+                              id={`edit-material-visible-${materialUsed.material_id}`}
+                              type="number"
+                              min="0"
+                              step="0.1"
+                              value={materialUsed.visible_quantity}
+                              onChange={(e) =>
+                                handleMaterialChange(
+                                  materialUsed.material_id,
+                                  materialUsed.actual_quantity,
+                                  Number.parseFloat(e.target.value) || 0,
+                                )
+                              }
+                              className="flex-1"
+                            />
+                            <span className="text-sm text-gray-500 ml-2 w-12">
+                              {getMaterialUnit(materialUsed.material_id)}
+                            </span>
+                          </div>
+                          <div className="text-xs text-gray-500 mt-1">Shown to non-admin users</div>
+                        </div>
+                      </div>
                     </div>
                   ))}
                   <Select
                     onValueChange={(materialId) => {
                       if (!formData.materials_used.some((m) => m.material_id === materialId)) {
-                        handleMaterialChange(materialId, 0)
+                        handleMaterialChange(materialId, 0, 0)
                       }
                     }}
                   >

@@ -47,7 +47,8 @@ export interface DailyLog {
   materials_used: Array<{
     material_id: string
     material_name?: string
-    quantity: number
+    actual_quantity: number
+    visible_quantity: number
     unit?: string
   }>
   equipment_used: string[]
@@ -630,7 +631,8 @@ export async function addDailyLog(logData: {
   workers_present: string[]
   materials_used: Array<{
     material_id: string
-    quantity: number
+    actual_quantity: number
+    visible_quantity: number
   }>
   equipment_used: string[]
   hours_worked: number
@@ -692,13 +694,15 @@ export async function addDailyLog(logData: {
       return null
     }
 
-    // Record material usage transactions and update stock
+    // Record material usage transactions and update stock using ACTUAL quantities
     if (data && logData.materials_used && logData.materials_used.length > 0) {
       console.log("Processing material usage for log:", data.id)
 
       for (const material of logData.materials_used) {
         try {
-          console.log(`Processing material: ${material.material_id}, Quantity: ${material.quantity}`)
+          console.log(
+            `Processing material: ${material.material_id}, Actual Quantity: ${material.actual_quantity}, Visible Quantity: ${material.visible_quantity}`,
+          )
 
           // Get current stock
           const { data: currentMaterial, error: fetchError } = await supabase
@@ -713,8 +717,11 @@ export async function addDailyLog(logData: {
           }
 
           if (currentMaterial) {
-            const newStock = toInt(currentMaterial.current_stock - material.quantity)
-            console.log(`Updating stock for ${material.material_id}: ${currentMaterial.current_stock} -> ${newStock}`)
+            // Use ACTUAL quantity for stock calculations
+            const newStock = toInt(currentMaterial.current_stock - material.actual_quantity)
+            console.log(
+              `Updating stock for ${material.material_id}: ${currentMaterial.current_stock} -> ${newStock} (using actual quantity: ${material.actual_quantity})`,
+            )
 
             // Update material stock
             const { error: updateError } = await supabase
@@ -729,17 +736,17 @@ export async function addDailyLog(logData: {
 
             console.log(`Successfully updated stock for ${material.material_id}`)
 
-            // Record transaction
+            // Record transaction with actual quantity
             const transactionResult = await addMaterialTransaction({
               material_id: material.material_id,
               transaction_type: "used",
-              quantity: material.quantity,
+              quantity: material.actual_quantity, // Use actual quantity for transaction
               previous_stock: currentMaterial.current_stock,
               new_stock: newStock,
               reference_type: "daily_log",
               reference_id: data.id,
               project: `Project: ${project_name_for_column}`,
-              notes: `Used in daily work: ${logData.work_completed.substring(0, 100)}`,
+              notes: `Used in daily work: ${logData.work_completed.substring(0, 100)} (Actual: ${material.actual_quantity}, Visible: ${material.visible_quantity})`,
               created_by: "admin@company.com",
             })
 
@@ -812,19 +819,21 @@ export async function updateDailyLog(id: string, updates: Partial<DailyLog>): Pr
       return null
     }
 
-    // Handle material stock updates for edited logs
+    // Handle material stock updates for edited logs using ACTUAL quantities
     if (updates.materials_used) {
       console.log("Processing material stock updates for edited log:", id)
 
-      // Create maps for easier comparison
+      // Create maps for easier comparison using ACTUAL quantities
       const originalMaterialsMap = new Map()
       ;(originalLog.materials_used || []).forEach((mat) => {
-        originalMaterialsMap.set(mat.material_id, mat.quantity)
+        // Handle both old format (quantity) and new format (actual_quantity)
+        const actualQty = mat.actual_quantity !== undefined ? mat.actual_quantity : mat.quantity || 0
+        originalMaterialsMap.set(mat.material_id, actualQty)
       })
 
       const newMaterialsMap = new Map()
       updates.materials_used.forEach((mat) => {
-        newMaterialsMap.set(mat.material_id, mat.quantity)
+        newMaterialsMap.set(mat.material_id, mat.actual_quantity)
       })
 
       // Get project name for reference
@@ -836,15 +845,17 @@ export async function updateDailyLog(id: string, updates: Partial<DailyLog>): Pr
       const allMaterialIds = new Set([...originalMaterialsMap.keys(), ...newMaterialsMap.keys()])
 
       for (const materialId of allMaterialIds) {
-        const originalQty = originalMaterialsMap.get(materialId) || 0
-        const newQty = newMaterialsMap.get(materialId) || 0
+        const originalActualQty = originalMaterialsMap.get(materialId) || 0
+        const newActualQty = newMaterialsMap.get(materialId) || 0
 
-        // Skip if no change
-        if (originalQty === newQty) continue
+        // Skip if no change in actual quantity
+        if (originalActualQty === newActualQty) continue
 
-        // Calculate the net change
-        const netChange = newQty - originalQty
-        console.log(`Material ${materialId}: Original=${originalQty}, New=${newQty}, Net Change=${netChange}`)
+        // Calculate the net change in actual quantity
+        const netChange = newActualQty - originalActualQty
+        console.log(
+          `Material ${materialId}: Original Actual=${originalActualQty}, New Actual=${newActualQty}, Net Change=${netChange}`,
+        )
 
         // Get current stock
         const { data: currentMaterial } = await supabase
@@ -858,7 +869,7 @@ export async function updateDailyLog(id: string, updates: Partial<DailyLog>): Pr
           continue
         }
 
-        // Update stock based on net change
+        // Update stock based on net change in actual quantity
         const newStock = toInt(currentMaterial.current_stock - netChange)
         console.log(`Updating stock for ${materialId}: ${currentMaterial.current_stock} -> ${newStock}`)
 
@@ -873,6 +884,10 @@ export async function updateDailyLog(id: string, updates: Partial<DailyLog>): Pr
           continue
         }
 
+        // Find the visible quantity for this material in the updated materials_used
+        const materialEntry = updates.materials_used.find((m) => m.material_id === materialId)
+        const visibleQty = materialEntry?.visible_quantity || 0
+
         // Record transaction
         const transactionType = netChange > 0 ? "used" : "returned"
         const quantity = Math.abs(netChange)
@@ -886,7 +901,7 @@ export async function updateDailyLog(id: string, updates: Partial<DailyLog>): Pr
           reference_type: "daily_log_edit",
           reference_id: id,
           project: `Project: ${projectName}`,
-          notes: `${transactionType === "used" ? "Additional material used" : "Material returned"} in edited daily log`,
+          notes: `${transactionType === "used" ? "Additional material used" : "Material returned"} in edited daily log (Actual: ${Math.abs(netChange)}, Visible: ${visibleQty})`,
           created_by: "admin@company.com",
         })
 
@@ -916,15 +931,18 @@ export async function deleteDailyLog(id: string): Promise<boolean> {
       return false
     }
 
-    // Get the log data before deleting to restore material stock
+    // Get the log data before deleting to restore material stock using ACTUAL quantities
     const { data: logToDelete } = await supabase.from("daily_logs").select("materials_used").eq("id", id).single()
 
     if (logToDelete && logToDelete.materials_used && logToDelete.materials_used.length > 0) {
       console.log("Restoring material stock for deleted log:", id)
 
-      // Restore stock for all materials that were used in this log
+      // Restore stock for all materials that were used in this log using ACTUAL quantities
       for (const material of logToDelete.materials_used) {
         try {
+          // Handle both old format (quantity) and new format (actual_quantity)
+          const actualQty = material.actual_quantity !== undefined ? material.actual_quantity : material.quantity || 0
+
           const { data: currentMaterial } = await supabase
             .from("materials")
             .select("current_stock")
@@ -932,9 +950,9 @@ export async function deleteDailyLog(id: string): Promise<boolean> {
             .single()
 
           if (currentMaterial) {
-            const restoredStock = toInt(currentMaterial.current_stock + material.quantity)
+            const restoredStock = toInt(currentMaterial.current_stock + actualQty)
             console.log(
-              `Restoring stock for ${material.material_id}: ${currentMaterial.current_stock} + ${material.quantity} = ${restoredStock}`,
+              `Restoring stock for ${material.material_id}: ${currentMaterial.current_stock} + ${actualQty} = ${restoredStock}`,
             )
 
             await supabase.from("materials").update({ current_stock: restoredStock }).eq("id", material.material_id)
@@ -943,12 +961,12 @@ export async function deleteDailyLog(id: string): Promise<boolean> {
             await addMaterialTransaction({
               material_id: material.material_id,
               transaction_type: "returned",
-              quantity: material.quantity,
+              quantity: actualQty,
               previous_stock: currentMaterial.current_stock,
               new_stock: restoredStock,
               reference_type: "daily_log_delete",
               reference_id: id,
-              notes: `Stock restored from deleted daily log`,
+              notes: `Stock restored from deleted daily log (Actual quantity: ${actualQty})`,
               created_by: "admin@company.com",
             })
 

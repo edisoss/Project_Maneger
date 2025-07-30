@@ -64,6 +64,7 @@ import {
 import type { Material, MaterialCategory, MaterialLocation, MaterialTransaction } from "@/lib/database"
 import { useToast } from "@/hooks/use-toast"
 import type { Activity } from "./recent-activities"
+import { MaterialPDFExport } from "./material-pdf-export"
 
 interface MaterialsTabProps {
   materials: Material[]
@@ -217,7 +218,7 @@ export default function MaterialsTab({
         type: "material",
         title: "Material Added",
         description: `New material "${newMaterial.name}" was added to inventory with ${newMaterial.current_stock} ${newMaterial.unit}.`,
-        icon: Plus,
+        icon: "Plus",
         variant: "default",
       })
 
@@ -282,7 +283,7 @@ export default function MaterialsTab({
         type: "material",
         title: "Material Updated",
         description: `Material "${updatedMaterial.name}" was updated. Current stock: ${updatedMaterial.current_stock} ${updatedMaterial.unit}.`,
-        icon: Edit,
+        icon: "Edit",
         variant: "secondary",
       })
 
@@ -326,7 +327,7 @@ export default function MaterialsTab({
         type: "material",
         title: "Material Deleted",
         description: `Material "${selectedMaterial.name}" was permanently deleted from inventory.`,
-        icon: Trash2,
+        icon: "Trash2",
         variant: "destructive",
       })
 
@@ -387,7 +388,7 @@ export default function MaterialsTab({
           type: "material",
           title: "Category Added",
           description: `New material category "${newCategory.name}" was created.`,
-          icon: Plus,
+          icon: "Plus",
           variant: "default",
         })
       }
@@ -426,7 +427,7 @@ export default function MaterialsTab({
           type: "material",
           title: "Location Added",
           description: `New material location "${newLocation.name}" was created.`,
-          icon: Plus,
+          icon: "Plus",
           variant: "default",
         })
       }
@@ -475,7 +476,7 @@ export default function MaterialsTab({
           type: "material",
           title: "Category Deleted",
           description: `Material category "${categoryToDelete.name}" was deleted.`,
-          icon: Trash2,
+          icon: "Trash2",
           variant: "destructive",
         })
       }
@@ -516,7 +517,7 @@ export default function MaterialsTab({
           type: "material",
           title: "Location Deleted",
           description: `Material location "${locationToDelete.name}" was deleted.`,
-          icon: Trash2,
+          icon: "Trash2",
           variant: "destructive",
         })
       }
@@ -627,7 +628,7 @@ export default function MaterialsTab({
         type: "material",
         title: "Material Topped Up",
         description: `${topUpQuantity} ${selectedMaterial.unit} added to "${selectedMaterial.name}". New stock: ${newStock} ${selectedMaterial.unit}`,
-        icon: Plus,
+        icon: "Plus",
         variant: "default",
       })
 
@@ -675,6 +676,7 @@ export default function MaterialsTab({
           </p>
         </div>
         <div className="flex gap-2">
+          <MaterialPDFExport materials={materials} projects={[]} />
           {isAdmin && (
             <Button variant="outline" onClick={() => setShowCategoriesDialog(true)}>
               <Settings className="h-4 w-4 mr-2" />
