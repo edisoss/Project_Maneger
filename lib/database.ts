@@ -736,7 +736,13 @@ export async function addDailyLog(logData: {
 
             console.log(`Successfully updated stock for ${material.material_id}`)
 
-            // Record transaction with actual quantity
+            // Create detailed work description for transaction notes
+            const workDescription =
+              logData.work_completed.length > 100
+                ? `${logData.work_completed.substring(0, 100)}...`
+                : logData.work_completed
+
+            // Record transaction with actual quantity and detailed work description
             const transactionResult = await addMaterialTransaction({
               material_id: material.material_id,
               transaction_type: "used",
@@ -746,7 +752,7 @@ export async function addDailyLog(logData: {
               reference_type: "daily_log",
               reference_id: data.id,
               project: `Project: ${project_name_for_column}`,
-              notes: `Used in daily work: ${logData.work_completed.substring(0, 100)} (Actual: ${material.actual_quantity}, Visible: ${material.visible_quantity})`,
+              notes: `Used for work: ${workDescription} (Actual: ${material.actual_quantity}, Visible: ${material.visible_quantity})`,
               created_by: "admin@company.com",
             })
 
@@ -789,7 +795,7 @@ export async function updateDailyLog(id: string, updates: Partial<DailyLog>): Pr
     // Get the original log to see what materials were previously used
     const { data: originalLog } = await supabase
       .from("daily_logs")
-      .select("materials_used, project_id")
+      .select("materials_used, project_id, work_description")
       .eq("id", id)
       .single()
 
@@ -841,6 +847,11 @@ export async function updateDailyLog(id: string, updates: Partial<DailyLog>): Pr
       const { data: projRow } = await supabase.from("projects").select("name").eq("id", projectId).single()
       const projectName = projRow?.name || "Unknown Project"
 
+      // Get the work description for detailed transaction notes
+      const workDescription = updates.work_completed || originalLog.work_description || "Work description not available"
+      const truncatedWorkDescription =
+        workDescription.length > 100 ? `${workDescription.substring(0, 100)}...` : workDescription
+
       // Process all material IDs (both original and new)
       const allMaterialIds = new Set([...originalMaterialsMap.keys(), ...newMaterialsMap.keys()])
 
@@ -888,9 +899,17 @@ export async function updateDailyLog(id: string, updates: Partial<DailyLog>): Pr
         const materialEntry = updates.materials_used.find((m) => m.material_id === materialId)
         const visibleQty = materialEntry?.visible_quantity || 0
 
-        // Record transaction
+        // Record transaction with detailed work description
         const transactionType = netChange > 0 ? "used" : "returned"
         const quantity = Math.abs(netChange)
+
+        // Create detailed transaction notes based on the type of change
+        let transactionNotes = ""
+        if (transactionType === "used") {
+          transactionNotes = `Additional material used for work: ${truncatedWorkDescription} (Actual: ${Math.abs(netChange)}, Visible: ${visibleQty})`
+        } else {
+          transactionNotes = `Material returned from edited work: ${truncatedWorkDescription} (Actual: ${Math.abs(netChange)}, Visible: ${visibleQty})`
+        }
 
         await addMaterialTransaction({
           material_id: materialId,
@@ -901,7 +920,7 @@ export async function updateDailyLog(id: string, updates: Partial<DailyLog>): Pr
           reference_type: "daily_log_edit",
           reference_id: id,
           project: `Project: ${projectName}`,
-          notes: `${transactionType === "used" ? "Additional material used" : "Material returned"} in edited daily log (Actual: ${Math.abs(netChange)}, Visible: ${visibleQty})`,
+          notes: transactionNotes,
           created_by: "admin@company.com",
         })
 
@@ -932,10 +951,19 @@ export async function deleteDailyLog(id: string): Promise<boolean> {
     }
 
     // Get the log data before deleting to restore material stock using ACTUAL quantities
-    const { data: logToDelete } = await supabase.from("daily_logs").select("materials_used").eq("id", id).single()
+    const { data: logToDelete } = await supabase
+      .from("daily_logs")
+      .select("materials_used, work_description")
+      .eq("id", id)
+      .single()
 
     if (logToDelete && logToDelete.materials_used && logToDelete.materials_used.length > 0) {
       console.log("Restoring material stock for deleted log:", id)
+
+      // Get work description for transaction notes
+      const workDescription = logToDelete.work_description || "Work description not available"
+      const truncatedWorkDescription =
+        workDescription.length > 100 ? `${workDescription.substring(0, 100)}...` : workDescription
 
       // Restore stock for all materials that were used in this log using ACTUAL quantities
       for (const material of logToDelete.materials_used) {
@@ -957,7 +985,7 @@ export async function deleteDailyLog(id: string): Promise<boolean> {
 
             await supabase.from("materials").update({ current_stock: restoredStock }).eq("id", material.material_id)
 
-            // Record restoration transaction
+            // Record restoration transaction with work description
             await addMaterialTransaction({
               material_id: material.material_id,
               transaction_type: "returned",
@@ -966,7 +994,7 @@ export async function deleteDailyLog(id: string): Promise<boolean> {
               new_stock: restoredStock,
               reference_type: "daily_log_delete",
               reference_id: id,
-              notes: `Stock restored from deleted daily log (Actual quantity: ${actualQty})`,
+              notes: `Stock restored from deleted work: ${truncatedWorkDescription} (Actual quantity: ${actualQty})`,
               created_by: "admin@company.com",
             })
 
