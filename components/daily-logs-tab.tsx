@@ -51,6 +51,7 @@ import {
   Info,
   Lock,
   Unlock,
+  User,
 } from "lucide-react"
 import { addDailyLog, updateDailyLog, deleteDailyLog, updateMaterial } from "@/lib/database"
 import type { DailyLog, Project, Worker, Material } from "@/lib/database"
@@ -66,6 +67,7 @@ interface DailyLogsTabProps {
   reloadMaterials: () => void
   logActivity: (activity: Omit<Activity, "id" | "timestamp">) => void
   isAdmin: boolean
+  userRole?: string // Add user role prop
 }
 
 export default function DailyLogsTab({
@@ -77,6 +79,7 @@ export default function DailyLogsTab({
   reloadMaterials,
   logActivity,
   isAdmin,
+  userRole = "user", // Default to user role
 }: DailyLogsTabProps) {
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [showEditDialog, setShowEditDialog] = useState(false)
@@ -118,6 +121,11 @@ export default function DailyLogsTab({
     { value: "on_hold", label: "On Hold", icon: Pause, color: "bg-yellow-500" },
     { value: "cancelled", label: "Cancelled", icon: XCircle, color: "bg-red-500" },
   ]
+
+  // Permission helpers - Updated to allow managers to edit daily logs
+  const canAddDailyLogs = isAdmin || userRole === "manager"
+  const canEditDailyLogs = isAdmin || userRole === "manager" // Allow managers to edit
+  const canDeleteDailyLogs = isAdmin // Only admins can delete
 
   // Converts a comma- or newline-separated list to a trimmed string array.
   function toStringArray(value: string): string[] {
@@ -236,8 +244,12 @@ export default function DailyLogsTab({
   }
 
   const handleAddDailyLog = async () => {
-    if (!isAdmin) {
-      toast({ title: "Access Denied", description: "Only administrators can add daily logs", variant: "destructive" })
+    if (!canAddDailyLogs) {
+      toast({
+        title: "Access Denied",
+        description: "Only administrators and managers can add daily logs",
+        variant: "destructive",
+      })
       return
     }
 
@@ -415,8 +427,12 @@ export default function DailyLogsTab({
   }
 
   const handleUpdateDailyLog = async () => {
-    if (!isAdmin) {
-      toast({ title: "Access Denied", description: "Only administrators can edit daily logs", variant: "destructive" })
+    if (!canEditDailyLogs) {
+      toast({
+        title: "Access Denied",
+        description: "Only administrators and managers can edit daily logs",
+        variant: "destructive",
+      })
       return
     }
 
@@ -474,7 +490,7 @@ export default function DailyLogsTab({
   }
 
   const handleDelete = (log: DailyLog) => {
-    if (!isAdmin) {
+    if (!canDeleteDailyLogs) {
       toast({
         title: "Access Denied",
         description: "Only administrators can delete daily logs",
@@ -640,10 +656,11 @@ export default function DailyLogsTab({
           <h2 className="text-2xl font-bold">Daily Logs Management</h2>
           <p className="text-gray-600">
             Track daily work progress and material usage with dual tracking
-            {!isAdmin && " (View Only)"}
+            {!canAddDailyLogs && " (View Only)"}
+            {canAddDailyLogs && !isAdmin && " (Manager Access)"}
           </p>
         </div>
-        {isAdmin && (
+        {canAddDailyLogs && (
           <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
             <DialogTrigger asChild>
               <Button
@@ -1169,9 +1186,11 @@ export default function DailyLogsTab({
         <CardHeader>
           <CardTitle>Daily Work Logs</CardTitle>
           <CardDescription>
-            {isAdmin
-              ? "Track daily work progress and material usage with dual tracking"
-              : "View daily work progress and material usage"}
+            {canAddDailyLogs && !isAdmin
+              ? "Track daily work progress and material usage (Manager Access)"
+              : isAdmin
+                ? "Track daily work progress and material usage with dual tracking"
+                : "View daily work progress and material usage"}
             {filteredLogs.length !== dailyLogs.length && (
               <span className="ml-2 text-blue-600">
                 (Showing {filteredLogs.length} of {dailyLogs.length} logs)
@@ -1194,6 +1213,7 @@ export default function DailyLogsTab({
                 <TableHead>Workers</TableHead>
                 <TableHead>Weather</TableHead>
                 <TableHead>Materials Used</TableHead>
+                <TableHead>Created By</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -1274,19 +1294,25 @@ export default function DailyLogsTab({
                         </div>
                       </TableCell>
                       <TableCell>
+                        <div className="flex items-center gap-1">
+                          <User className="h-4 w-4 text-gray-400" />
+                          <span className="text-sm">{log.created_by_user_name || "Unknown User"}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
                         <div className="flex space-x-2">
                           <Button variant="outline" size="sm" onClick={() => handleView(log)}>
                             <Eye className="h-3 w-3" />
                           </Button>
-                          {isAdmin && (
-                            <>
-                              <Button variant="outline" size="sm" onClick={() => handleEdit(log)}>
-                                <Edit className="h-3 w-3" />
-                              </Button>
-                              <Button variant="outline" size="sm" onClick={() => handleDelete(log)}>
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
-                            </>
+                          {canEditDailyLogs && (
+                            <Button variant="outline" size="sm" onClick={() => handleEdit(log)}>
+                              <Edit className="h-3 w-3" />
+                            </Button>
+                          )}
+                          {canDeleteDailyLogs && (
+                            <Button variant="outline" size="sm" onClick={() => handleDelete(log)}>
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
                           )}
                         </div>
                       </TableCell>
@@ -1300,7 +1326,7 @@ export default function DailyLogsTab({
               <p className="text-gray-500">
                 {hasActiveFilters
                   ? "No logs found matching the selected filters. Try adjusting your filter criteria."
-                  : isAdmin
+                  : canAddDailyLogs
                     ? "No daily logs found. Add your first log to get started!"
                     : "No daily logs available to view."}
               </p>
@@ -1318,7 +1344,7 @@ export default function DailyLogsTab({
           </DialogHeader>
           {selectedLog && (
             <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <div>
                   <Label className="text-sm font-medium">Date</Label>
                   <p className="text-sm text-gray-600">{new Date(selectedLog.date).toLocaleDateString()}</p>
@@ -1327,6 +1353,13 @@ export default function DailyLogsTab({
                   <Label className="text-sm font-medium">Project</Label>
                   <div className="mt-1">
                     <Badge variant="outline">{getProjectName(selectedLog.project_id)}</Badge>
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Created By</Label>
+                  <div className="flex items-center gap-1 mt-1">
+                    <User className="h-4 w-4 text-gray-400" />
+                    <span className="text-sm text-gray-600">{selectedLog.created_by_user_name || "Unknown User"}</span>
                   </div>
                 </div>
               </div>
@@ -1483,7 +1516,7 @@ export default function DailyLogsTab({
       </Dialog>
 
       {/* Edit Dialog */}
-      {isAdmin && (
+      {canEditDailyLogs && (
         <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
@@ -1785,7 +1818,7 @@ export default function DailyLogsTab({
       )}
 
       {/* Delete Confirmation Dialog */}
-      {isAdmin && (
+      {canDeleteDailyLogs && (
         <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
           <AlertDialogContent>
             <AlertDialogHeader>

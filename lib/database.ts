@@ -59,6 +59,8 @@ export interface DailyLog {
   status: string
   working_place: string
   created_by: string
+  created_by_user_id?: string
+  created_by_user_name?: string
   created_at: string
   updated_at: string
 }
@@ -580,40 +582,41 @@ export async function getDailyLogs(): Promise<DailyLog[]> {
       return []
     }
 
-    // Try the FK join first, fall back to manual merge if FK doesn't exist
-    const { data, error } = await supabase
+    console.log("=== FETCHING DAILY LOGS ===")
+
+    // Fetch logs, projects, and profiles separately to avoid relationship issues
+    const { data: logs, error: logsError } = await supabase
       .from("daily_logs")
-      .select("*, projects(name)")
+      .select("*")
       .order("created_at", { ascending: false })
 
-    if (error) {
-      console.warn("FK join failed, falling back to manual merge:", error?.message ?? error)
-      // Fallback: fetch logs & projects separately, then merge.
-      const { data: logs } = await supabase.from("daily_logs").select("*").order("created_at", { ascending: false })
-      const { data: allProjects } = await supabase.from("projects").select("id, name")
+    if (logsError) {
+      console.error("Error fetching daily logs:", logsError)
+      return []
+    }
 
-      return (
-        logs?.map((log) => ({
+    const { data: allProjects } = await supabase.from("projects").select("id, name")
+    const { data: allProfiles } = await supabase.from("profiles").select("id, full_name, email")
+
+    console.log("Fetched logs:", logs?.length)
+    console.log("Fetched profiles:", allProfiles?.length)
+
+    return (
+      logs?.map((log) => {
+        const profile = allProfiles?.find((p) => p.id === log.created_by_user_id)
+        const creatorName = profile?.full_name || profile?.email || "Unknown User"
+
+        console.log(`Log ${log.id}: user_id=${log.created_by_user_id}, creator=${creatorName}`)
+
+        return {
           ...log,
           project_name:
             allProjects?.find((p) => p.id === log.project_id)?.name ?? (log as any).project ?? "Unknown Project",
           work_completed: (log as any).work_description ?? "",
           equipment_used: (log as any).equipment_used ?? [],
-        })) ?? []
-      )
-    }
-
-    // Happy-path transform (data already contains projects.name)
-    return (
-      data?.map((log) => ({
-        ...log,
-        project_name:
-          (log as any).projects?.name ??
-          (log as any).project ?? // fallback to legacy column
-          "Unknown Project",
-        work_completed: (log as any).work_description ?? "",
-        equipment_used: (log as any).equipment_used ?? [],
-      })) ?? []
+          created_by_user_name: creatorName,
+        }
+      }) ?? []
     )
   } catch (error) {
     console.error("Error in getDailyLogs:", error)
@@ -649,44 +652,68 @@ export async function addDailyLog(logData: {
       return null
     }
 
-    const { project_id } = logData // Declare project_id before using it
+    // Get current user info with detailed logging
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+
+    console.log("=== USER DEBUG INFO ===")
+    console.log("User error:", userError)
+    console.log("Current user:", user)
+    console.log("User ID:", user?.id)
+    console.log("User email:", user?.email)
+
+    if (!user?.id) {
+      console.error("No authenticated user found when creating daily log")
+      // Still proceed but with null user_id
+    }
+
+    // Check if user exists in profiles table
+    let userProfile = null
+    if (user?.id) {
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("id, full_name, email")
+        .eq("id", user.id)
+        .single()
+
+      console.log("Profile lookup error:", profileError)
+      console.log("User profile found:", profile)
+      userProfile = profile
+    }
+
+    const { project_id } = logData
 
     // Look up project name for NOT-NULL "project" column
     const { data: projRow } = await supabase.from("projects").select("name").eq("id", project_id).single()
-    const project_name_for_column = projRow?.name ?? project_id // fallback
+    const project_name_for_column = projRow?.name ?? project_id
 
-    // --- build an object that matches the DB column names exactly ---
-    const {
-      title,
-      date,
-      weather,
-      temperature,
-      workers_present,
-      materials_used,
-      equipment_used, // ← add this
-      work_completed,
-      hours_worked,
-      status,
-      working_place,
-    } = logData
-
+    // Build log object with explicit created_by_user_id
     const logToInsert = {
-      project: project_name_for_column, // <-- legacy NOT-NULL column
-      title,
-      date,
+      project: project_name_for_column,
+      title: logData.title,
+      date: logData.date,
       project_id,
-      weather,
-      temperature,
-      workers_present,
-      materials_used,
-      equipment_used: equipment_used,
-      hours_worked,
-      work_description: work_completed, // (already fixed earlier)
-      status,
-      working_place,
-      created_by: "admin@company.com",
+      weather: logData.weather,
+      temperature: logData.temperature,
+      workers_present: logData.workers_present,
+      materials_used: logData.materials_used,
+      equipment_used: logData.equipment_used,
+      hours_worked: logData.hours_worked,
+      work_description: logData.work_completed,
+      status: logData.status,
+      working_place: logData.working_place,
+      created_by: "admin@company.com", // legacy field
+      created_by_user_id: user?.id || null, // explicitly set the current user or null
     }
 
+    console.log("Inserting daily log with data:", {
+      ...logToInsert,
+      created_by_user_id: logToInsert.created_by_user_id,
+    })
+
+    // Insert without trying to join - just get the basic data back
     const { data, error } = await supabase.from("daily_logs").insert([logToInsert]).select().single()
 
     if (error) {
@@ -694,7 +721,9 @@ export async function addDailyLog(logData: {
       return null
     }
 
-    // Record material usage transactions and update stock using ACTUAL quantities
+    console.log("Daily log created successfully:", data)
+
+    // Process material usage transactions...
     if (data && logData.materials_used && logData.materials_used.length > 0) {
       console.log("Processing material usage for log:", data.id)
 
@@ -746,7 +775,7 @@ export async function addDailyLog(logData: {
             const transactionResult = await addMaterialTransaction({
               material_id: material.material_id,
               transaction_type: "used",
-              quantity: material.actual_quantity, // Use actual quantity for transaction
+              quantity: material.actual_quantity,
               previous_stock: currentMaterial.current_stock,
               new_stock: newStock,
               reference_type: "daily_log",
@@ -770,13 +799,26 @@ export async function addDailyLog(logData: {
       }
     }
 
-    // Get project name for return data
+    // Get project name and creator name for return data
     const { data: project } = await supabase.from("projects").select("name").eq("id", logData.project_id).single()
+
+    // Determine creator name from multiple sources
+    let creatorName = "Unknown User"
+    if (userProfile?.full_name) {
+      creatorName = userProfile.full_name
+    } else if (userProfile?.email) {
+      creatorName = userProfile.email
+    } else if (user?.email) {
+      creatorName = user.email
+    }
+
+    console.log("Final creator name:", creatorName)
 
     return {
       ...data,
       project_name: project?.name || "Unknown Project",
       work_completed: data.work_description,
+      created_by_user_name: creatorName,
     }
   } catch (error) {
     console.error("Error in addDailyLog:", error)

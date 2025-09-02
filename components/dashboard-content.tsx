@@ -52,6 +52,8 @@ import {
   Edit,
   Trash2,
   Eye,
+  Briefcase,
+  Plus,
 } from "lucide-react"
 import { createClientClient } from "@/lib/supabase-client"
 import {
@@ -486,6 +488,10 @@ export default function DashboardContent({ user }: DashboardContentProps) {
     return logDate >= weekAgo
   }).length
 
+  // Get user role for permission checks
+  const userRole = userProfile?.role || "user"
+  const canAddDailyLogs = isAdmin || userRole === "manager"
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
@@ -519,7 +525,8 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                     Construction Manager
                   </h1>
                   <p className="text-sm text-gray-500">
-                    Project Management Dashboard {!isAdmin && "(View Only)"}
+                    Project Management Dashboard {!isAdmin && !canAddDailyLogs && "(View Only)"}
+                    {canAddDailyLogs && !isAdmin && "(Manager Access)"}
                     {userProfile && (
                       <span className="ml-2 text-xs bg-gray-100 px-2 py-1 rounded">{userProfile.full_name}</span>
                     )}
@@ -550,11 +557,12 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                       <p className="text-sm font-medium leading-none flex items-center">
                         {userProfile?.full_name || user.email}
                         {isAdmin && <Crown className="h-3 w-3 ml-2 text-yellow-500" />}
-                        {!isAdmin && <Eye className="h-3 w-3 ml-2 text-gray-500" />}
+                        {!isAdmin && userRole === "manager" && <Briefcase className="h-3 w-3 ml-2 text-blue-500" />}
+                        {!isAdmin && userRole !== "manager" && <Eye className="h-3 w-3 ml-2 text-gray-500" />}
                       </p>
                       <p className="text-xs leading-none text-muted-foreground">{userProfile?.email || user.email}</p>
                       <p className="text-xs leading-none text-muted-foreground">
-                        {isAdmin ? "Administrator" : "User (View Only)"}
+                        {isAdmin ? "Administrator" : userRole === "manager" ? "Manager" : "User (View Only)"}
                       </p>
                     </div>
                   </DropdownMenuLabel>
@@ -628,13 +636,16 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                     </h2>
                     <p className="text-blue-100 text-lg">
                       Here's what's happening with your construction projects today.
-                      {!isAdmin && " (View Only Mode)"}
+                      {!isAdmin && !canAddDailyLogs && " (View Only Mode)"}
+                      {canAddDailyLogs && !isAdmin && " (Manager Access)"}
                     </p>
                   </div>
                   <div className="hidden md:block">
                     <div className="w-24 h-24 bg-white/10 rounded-full flex items-center justify-center">
                       {isAdmin ? (
                         <Building2 className="w-12 h-12 text-white" />
+                      ) : canAddDailyLogs ? (
+                        <Briefcase className="w-12 h-12 text-white" />
                       ) : (
                         <Eye className="w-12 h-12 text-white" />
                       )}
@@ -777,10 +788,16 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                                 <div className="flex items-center space-x-2">
                                   <p className="text-xs text-gray-500 truncate">{profile.email}</p>
                                   <Badge
-                                    variant={profile.is_admin ? "default" : "secondary"}
+                                    variant={
+                                      profile.is_admin
+                                        ? "default"
+                                        : profile.role === "manager"
+                                          ? "secondary"
+                                          : "outline"
+                                    }
                                     className="text-xs flex-shrink-0"
                                   >
-                                    {profile.is_admin ? "Admin" : profile.role}
+                                    {profile.is_admin ? "Admin" : profile.role === "manager" ? "Manager" : profile.role}
                                   </Badge>
                                 </div>
                               </div>
@@ -811,8 +828,66 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                 </Card>
               )}
 
+              {/* Manager Access Notice */}
+              {!isAdmin && canAddDailyLogs && (
+                <Card className="bg-white/60 backdrop-blur-sm border-gray-200 hover:shadow-lg transition-all duration-200">
+                  <CardHeader>
+                    <CardTitle className="flex items-center">
+                      <Briefcase className="h-5 w-5 mr-2 text-blue-600" />
+                      Manager Access
+                      <Badge variant="secondary" className="ml-2 bg-blue-100 text-blue-800">
+                        Manager
+                      </Badge>
+                    </CardTitle>
+                    <CardDescription>Your current access level and permissions</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex items-center justify-between p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                          <Briefcase className="h-4 w-4 text-white" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-blue-900">Manager</p>
+                          <p className="text-xs text-blue-700">Can add daily logs</p>
+                        </div>
+                      </div>
+                      <Badge variant="outline" className="border-blue-300 text-blue-700">
+                        Active
+                      </Badge>
+                    </div>
+
+                    <div className="space-y-3">
+                      <h4 className="font-medium text-gray-900">What you can do:</h4>
+                      <ul className="space-y-2 text-sm text-gray-600">
+                        <li className="flex items-center">
+                          <Eye className="h-4 w-4 mr-2 text-green-500" />
+                          View all projects and their details
+                        </li>
+                        <li className="flex items-center">
+                          <Eye className="h-4 w-4 mr-2 text-green-500" />
+                          View worker information and schedules
+                        </li>
+                        <li className="flex items-center">
+                          <Eye className="h-4 w-4 mr-2 text-green-500" />
+                          View material inventory and usage
+                        </li>
+                        <li className="flex items-center">
+                          <Plus className="h-4 w-4 mr-2 text-blue-500" />
+                          Add daily logs and track work progress
+                        </li>
+                      </ul>
+
+                      <div className="pt-2 border-t border-gray-200">
+                        <p className="text-xs text-gray-500">Contact your administrator for additional permissions.</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* View Only Notice for Standard Users */}
-              {!isAdmin && (
+              {!isAdmin && !canAddDailyLogs && (
                 <Card className="bg-white/60 backdrop-blur-sm border-gray-200 hover:shadow-lg transition-all duration-200">
                   <CardHeader>
                     <CardTitle className="flex items-center">
@@ -913,6 +988,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
               reloadMaterials={reloadMaterials}
               logActivity={logActivity}
               isAdmin={isAdmin}
+              userRole={userRole}
             />
           </TabsContent>
         </Tabs>
@@ -967,7 +1043,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="user">User (View Only)</SelectItem>
-                  <SelectItem value="manager">Manager</SelectItem>
+                  <SelectItem value="manager">Manager (Can Add Daily Logs)</SelectItem>
                   <SelectItem value="supervisor">Supervisor</SelectItem>
                   <SelectItem value="admin">Admin (Full Access)</SelectItem>
                 </SelectContent>
@@ -1041,7 +1117,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="user">User (View Only)</SelectItem>
-                  <SelectItem value="manager">Manager</SelectItem>
+                  <SelectItem value="manager">Manager (Can Add Daily Logs)</SelectItem>
                   <SelectItem value="supervisor">Supervisor</SelectItem>
                   <SelectItem value="admin">Admin (Full Access)</SelectItem>
                 </SelectContent>
