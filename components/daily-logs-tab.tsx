@@ -37,7 +37,7 @@ import {
   updateMaterial,
   getDailyLogs,
   getDailyLogsCount,
-  getDailyLogsStats,
+  getDailyLogsStats, // Import getDailyLogsStats
 } from "@/lib/database"
 import type { DailyLog, Project, Worker, Material } from "@/lib/database"
 import { useToast } from "@/hooks/use-toast"
@@ -52,7 +52,7 @@ interface DailyLogsTabProps {
   reloadMaterials: () => void
   logActivity: (activity: Omit<Activity, "id" | "timestamp">) => void
   isAdmin: boolean
-  userRole?: string
+  userRole?: string // Add user role prop
 }
 
 export default function DailyLogsTab({
@@ -64,7 +64,7 @@ export default function DailyLogsTab({
   reloadMaterials,
   logActivity,
   isAdmin,
-  userRole = "user",
+  userRole = "user", // Default to user role
 }: DailyLogsTabProps) {
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [showEditDialog, setShowEditDialog] = useState(false)
@@ -118,13 +118,13 @@ export default function DailyLogsTab({
   useEffect(() => {
     const loadPaginatedLogs = async () => {
       const offset = (currentPage - 1) * logsPerPage
-      const logs = await getDailyLogs(logsPerPage, offset, { dateFilter, projectFilter }) // Pass filters
-      const count = await getDailyLogsCount({ dateFilter, projectFilter }) // Pass filters
+      const logs = await getDailyLogs(logsPerPage, offset)
+      const count = await getDailyLogsCount()
       setDailyLogs(logs)
       setTotalLogs(count)
     }
     loadPaginatedLogs()
-  }, [currentPage, setDailyLogs, dateFilter, projectFilter]) // Add filters to dependency array
+  }, [currentPage, setDailyLogs])
 
   // Effect to reload stats when filters change
   useEffect(() => {
@@ -199,7 +199,7 @@ export default function DailyLogsTab({
         return { fromDate: todayStr, toDate: todayStr }
       case "week":
         const weekStart = new Date(today)
-        weekStart.setDate(today.getDate() - today.getDay()) // Start of week (Sunday)
+        weekStart.setDate(today.getDay()) // Start of week (Sunday)
         const weekEnd = new Date(weekStart)
         weekEnd.setDate(weekStart.getDate() + 6) // End of week (Saturday)
         return {
@@ -407,6 +407,14 @@ export default function DailyLogsTab({
       setDailyLogs(logs)
       setTotalLogs(count)
 
+      // logActivity({ // This logActivity call is duplicated, removed from here
+      //   type: "daily_log",
+      //   title: "Daily Log Created",
+      //   description: `New daily log created for ${new Date(formData.date).toLocaleDateString()} with status: ${statusConfig.label}.`,
+      //   icon: Plus,
+      //   variant: "default",
+      // })
+
       setShowAddDialog(false)
       resetForm()
       toast({ title: "Success", description: "Daily log added successfully!" })
@@ -424,6 +432,8 @@ export default function DailyLogsTab({
     // Parse workers_present - handle both array and JSON string formats
     let workersPresent: string[] = []
     try {
+      
+
       if (Array.isArray(log.workers_present)) {
         // Convert all to strings for consistent comparison
         workersPresent = log.workers_present.map((id) => String(id))
@@ -431,6 +441,12 @@ export default function DailyLogsTab({
         const parsed = JSON.parse(log.workers_present || "[]")
         workersPresent = Array.isArray(parsed) ? parsed.map((id) => String(id)) : []
       }
+
+      // Verify which workers should be selected
+      const matchingWorkers = workers.filter(
+        (worker) => workersPresent.includes(String(worker.id)) || workersPresent.includes(worker.id),
+      )
+      
     } catch (e) {
       console.error("Error parsing workers_present:", e)
       workersPresent = []
@@ -867,6 +883,10 @@ export default function DailyLogsTab({
       const count = await getDailyLogsCount({ dateFilter, projectFilter }) // Pass filters
       setDailyLogs(logs)
       setTotalLogs(count)
+
+      setShowAddDialog(false)
+      resetForm()
+      toast({ title: "Success", description: "Daily log added successfully!" })
     } catch (error) {
       console.error("Error adding daily log:", error)
       toast({ title: "Error", description: "Error adding daily log.", variant: "destructive" })
@@ -877,517 +897,523 @@ export default function DailyLogsTab({
 
   return (
     <div className="space-y-6">
-      {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Logs</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.totalLogs}</div>
-            <p className="text-xs text-muted-foreground">All time</p>
-          </CardContent>
-        </Card>
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold">Daily Logs Management</h2>
+          <p className="text-gray-600">
+            Track daily work progress and material usage with dual tracking
+            {!canAddDailyLogs && " (View Only)"}
+            {canAddDailyLogs && !isAdmin && " (Manager Access)"}
+          </p>
+        </div>
+        {canAddDailyLogs && (
+          <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+            <DialogTrigger asChild>
+              <Button
+                onClick={() => {
+                  resetForm()
+                  setShowAddDialog(true)
+                }}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Daily Log
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Add Daily Log</DialogTitle>
+                <DialogDescription>Record daily work progress and material usage with dual tracking</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-6">
+                {/* </CHANGE> */}
+                {/* Remove single location selector, materials now tracked with their source location */}
+                {/* </CHANGE> */}
+                {/* </CHANGE> */}
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">This Week</CardTitle>
-            <Calendar className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.thisWeekCount}</div>
-            <p className="text-xs text-muted-foreground">Last 7 days</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">This Month</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.thisMonthCount}</div>
-            <p className="text-xs text-muted-foreground">Last 30 days</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Projects</CardTitle>
-            <Building className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.activeProjects}</div>
-            <p className="text-xs text-muted-foreground">With logs in range</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Log Status Overview */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Log Status Overview</CardTitle>
-          <CardDescription>Distribution of daily log statuses</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {statusStats.map((status) => {
-              const StatusIcon = status.icon
-              return (
-                <div key={status.value} className="flex items-center gap-3">
-                  <div className={`w-3 h-3 rounded-full ${status.color}`} />
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <StatusIcon className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm font-medium">{status.label}</span>
-                    </div>
-                    <p className="text-2xl font-bold">{status.count}</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="date">Date *</Label>
+                    <Input
+                      id="date"
+                      type="date"
+                      value={formData.date}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, date: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="project">Project *</Label>
+                    <Select
+                      value={formData.project_id}
+                      onValueChange={(value) => setFormData((prev) => ({ ...prev, project_id: value }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select project" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {projects.map((project) => (
+                          <SelectItem key={project.id} value={project.id}>
+                            {project.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
-              )
-            })}
-          </div>
-        </CardContent>
-      </Card>
 
-      {/* Daily Logs Management */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Daily Logs Management</CardTitle>
-              <CardDescription>Track daily work progress and material usage with dual tracking</CardDescription>
-            </div>
-            {canAddDailyLogs && (
-              <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-                <DialogTrigger asChild>
-                  <Button onClick={() => {
-                    resetForm()
-                    setShowAddDialog(true)
-                  }}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Add Daily Log
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-                  <DialogHeader>
-                    <DialogTitle>Add New Daily Log</DialogTitle>
-                    <DialogDescription>Record daily work progress, materials used, and team activities</DialogDescription>
-                  </DialogHeader>
-                  
-                  {/* Add form content here - continuing below */}
-                  <div className="grid gap-4 py-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="date">Date *</Label>
-                        <Input
-                          id="date"
-                          type="date"
-                          value={formData.date}
-                          onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="project">Project *</Label>
-                        <Select
-                          value={formData.project_id}
-                          onValueChange={(value) => setFormData({ ...formData, project_id: value })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select project" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {projects.map((project) => (
-                              <SelectItem key={project.id} value={project.id}>
-                                {project.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
+                <div>
+                  <Label htmlFor="work_description">Work Description *</Label>
+                  <Textarea
+                    id="work_description"
+                    placeholder="Describe the work performed today"
+                    value={formData.work_description}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, work_description: e.target.value }))}
+                    rows={3}
+                  />
+                </div>
 
+                <div className="grid grid-cols-4 gap-4">
+                  <div>
+                    <Label htmlFor="working_place">Working Place</Label>
+                    <Input
+                      id="working_place"
+                      placeholder="Specific location or area"
+                      value={formData.working_place}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, working_place: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="weather_conditions">Weather Conditions</Label>
+                    <Select
+                      value={formData.weather_conditions}
+                      onValueChange={(value) => setFormData((prev) => ({ ...prev, weather_conditions: value }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select weather" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {weatherOptions.map((weather) => (
+                          <SelectItem key={weather} value={weather}>
+                            {weather}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="hours_worked">Hours Worked *</Label>
+                    <Input
+                      id="hours_worked"
+                      type="number"
+                      min="0"
+                      max="24"
+                      step="0.5"
+                      value={formData.hours_worked}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, hours_worked: Number(e.target.value) || 0 }))}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="status">Status *</Label>
+                    <Select
+                      value={formData.status}
+                      onValueChange={(value) => setFormData((prev) => ({ ...prev, status: value }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {statusOptions.map((status) => (
+                          <SelectItem key={status.value} value={status.value}>
+                            <div className="flex items-center gap-2">
+                              <status.icon className="h-4 w-4" />
+                              {status.label}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="equipment_used">Equipment Used</Label>
+                  <Textarea
+                    id="equipment_used"
+                    placeholder="List equipment and machinery used (separate with commas or new lines)"
+                    value={formData.equipment_used}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, equipment_used: e.target.value }))}
+                    rows={2}
+                  />
+                </div>
+
+                <div>
+                  <Label>Workers Present</Label>
+                  <ScrollArea className="h-32 border rounded-md p-3">
                     <div className="space-y-2">
-                      <Label htmlFor="work_description">Work Description *</Label>
-                      <Textarea
-                        id="work_description"
-                        value={formData.work_description}
-                        onChange={(e) => setFormData({ ...formData, work_description: e.target.value })}
-                        placeholder="Describe the work completed today..."
-                        rows={3}
-                      />
-                    </div>
+                      {workers
+                        .filter((worker) => worker.status === "Active")
+                        .map((worker) => {
+                          const isChecked = formData.workers_present.includes(String(worker.id))
+                          
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="working_place">Working Place</Label>
-                        <Input
-                          id="working_place"
-                          value={formData.working_place}
-                          onChange={(e) => setFormData({ ...formData, working_place: e.target.value })}
-                          placeholder="e.g., Building A, Floor 2"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="hours_worked">Hours Worked</Label>
-                        <Input
-                          id="hours_worked"
-                          type="number"
-                          value={formData.hours_worked}
-                          onChange={(e) => setFormData({ ...formData, hours_worked: Number(e.target.value) })}
-                          min="0"
-                          step="0.5"
-                        />
-                      </div>
+                          return (
+                            <div key={worker.id} className="flex items-center space-x-2">
+                              <Checkbox
+                                id={`worker-${worker.id}`}
+                                checked={isChecked}
+                                onCheckedChange={(checked) => {
+              
+                                  handleWorkerToggle(String(worker.id), checked as boolean)
+                                }}
+                              />
+                              <Label htmlFor={`worker-${worker.id}`} className="text-sm cursor-pointer">
+                                {worker.name} - {worker.role}
+                              </Label>
+                            </div>
+                          )
+                        })}
                     </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="weather">Weather</Label>
-                        <Select
-                          value={formData.weather_conditions}
-                          onValueChange={(value) => setFormData({ ...formData, weather_conditions: value })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {weatherOptions.map((weather) => (
-                              <SelectItem key={weather} value={weather}>
-                                {weather}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="status">Status</Label>
-                        <Select
-                          value={formData.status}
-                          onValueChange={(value) => setFormData({ ...formData, status: value })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {statusOptions.map((status) => {
-                              const StatusIcon = status.icon
-                              return (
-                                <SelectItem key={status.value} value={status.value}>
-                                  <div className="flex items-center gap-2">
-                                    <StatusIcon className="h-4 w-4" />
-                                    {status.label}
-                                  </div>
-                                </SelectItem>
-                              )
-                            })}
-                          </SelectContent>
-                        </Select>
-                      </div>
+                  </ScrollArea>
+                  {formData.workers_present.length > 0 && (
+                    <div className="mt-2 text-sm text-gray-600">
+                      Selected: {formData.workers_present.length} worker(s)
                     </div>
+                  )}
+                </div>
 
-                    {/* Workers Section */}
-                    <div className="space-y-2">
-                      <Label>Workers Present</Label>
-                      <ScrollArea className="h-32 border rounded-md p-3">
-                        <div className="space-y-2">
-                          {workers.map((worker) => {
-                            const workerIdStr = String(worker.id)
-                            const isChecked = formData.workers_present.includes(workerIdStr)
-                            
-                            return (
-                              <div key={worker.id} className="flex items-center space-x-2">
-                                <Checkbox
-                                  id={`worker-${worker.id}`}
-                                  checked={isChecked}
-                                  onCheckedChange={(checked) => handleWorkerToggle(workerIdStr, checked as boolean)}
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Label>Materials Used</Label>
+                    <div className="flex items-center gap-1 text-xs text-gray-500 bg-blue-50 px-2 py-1 rounded">
+                      <Info className="h-3 w-3" />
+                      Select locations first, then choose materials from those locations
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    {formData.materials_used.map((materialUsed, index) => {
+                      const material = materials.find((m) => m.id === materialUsed.material_id)
+                      return (
+                        <div key={index} className="p-4 border rounded-lg bg-gray-50">
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex flex-col">
+                              <span className="font-medium">{getMaterialName(materialUsed.material_id)}</span>
+                              <span className="text-xs text-gray-500 flex items-center gap-1 mt-1">
+                                <MapPin className="h-3 w-3" />
+                                From: {getLocationName(materialUsed.source_location)}
+                              </span>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeMaterial(materialUsed.material_id)}
+                              className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <Label
+                                htmlFor={`material-actual-${materialUsed.material_id}`}
+                                className="text-xs flex items-center gap-1"
+                              >
+                                <Lock className="h-3 w-3" />
+                                Actual Usage (Internal)
+                              </Label>
+                              <div className="flex items-center">
+                                <Input
+                                  id={`material-actual-${materialUsed.material_id}`}
+                                  type="number"
+                                  min="0"
+                                  step="0.1"
+                                  value={materialUsed.actual_quantity}
+                                  onChange={(e) =>
+                                    handleMaterialChange(
+                                      materialUsed.material_id,
+                                      Number.parseFloat(e.target.value) || 0,
+                                      materialUsed.visible_quantity,
+                                      materialUsed.source_location,
+                                    )
+                                  }
+                                  className="flex-1"
                                 />
-                                <label htmlFor={`worker-${worker.id}`} className="text-sm cursor-pointer">
-                                  {worker.name} - {worker.role}
-                                </label>
+                                <span className="text-sm text-gray-500 ml-2 w-12">
+                                  {getMaterialUnit(materialUsed.material_id)}
+                                </span>
                               </div>
-                            )
-                          })}
-                        </div>
-                      </ScrollArea>
-                    </div>
-
-                    {/* Materials Section with Location Selection */}
-                    <div className="space-y-3 border-t pt-4">
-                      <Label>Materials Used</Label>
-                      
-                      {/* Location Selector */}
-                      <Card className="bg-blue-50 dark:bg-blue-950/20">
-                        <CardContent className="pt-4">
-                          <div className="space-y-3">
-                            <p className="text-sm font-medium flex items-center gap-2">
-                              <MapPin className="h-4 w-4" />
-                              Step 1: Select Material Source Locations
-                            </p>
-                            <div className="grid grid-cols-2 gap-2">
-                              <div className="flex items-center space-x-2">
-                                <Checkbox
-                                  id="location-storage"
-                                  checked={selectedLocationsForMaterial.includes("storage")}
-                                  onCheckedChange={(checked) => handleLocationToggle("storage", checked as boolean)}
+                              <div className="text-xs text-gray-500 mt-1">Affects inventory calculations</div>
+                            </div>
+                            <div>
+                              <Label
+                                htmlFor={`material-visible-${materialUsed.material_id}`}
+                                className="text-xs flex items-center gap-1"
+                              >
+                                <Unlock className="h-3 w-3" />
+                                Visible Usage (Public)
+                              </Label>
+                              <div className="flex items-center">
+                                <Input
+                                  id={`material-visible-${materialUsed.material_id}`}
+                                  type="number"
+                                  min="0"
+                                  step="0.1"
+                                  value={materialUsed.visible_quantity}
+                                  onChange={(e) =>
+                                    handleMaterialChange(
+                                      materialUsed.material_id,
+                                      materialUsed.actual_quantity,
+                                      Number.parseFloat(e.target.value) || 0,
+                                      materialUsed.source_location,
+                                    )
+                                  }
+                                  className="flex-1"
                                 />
-                                <label htmlFor="location-storage" className="text-sm cursor-pointer flex items-center gap-2">
-                                  <Building2 className="h-4 w-4" />
-                                  Central Storage ({materialsByLocation.get("storage")?.length || 0} materials)
-                                </label>
+                                <span className="text-sm text-gray-500 ml-2 w-12">
+                                  {getMaterialUnit(materialUsed.material_id)}
+                                </span>
                               </div>
-                              {projects.map((project) => {
-                                const projectMaterials = materialsByLocation.get(project.id) || []
-                                return (
-                                  <div key={project.id} className="flex items-center space-x-2">
-                                    <Checkbox
-                                      id={`location-${project.id}`}
-                                      checked={selectedLocationsForMaterial.includes(project.id)}
-                                      onCheckedChange={(checked) => handleLocationToggle(project.id, checked as boolean)}
-                                    />
-                                    <label htmlFor={`location-${project.id}`} className="text-sm cursor-pointer flex items-center gap-2">
-                                      <Building className="h-4 w-4" />
-                                      {project.name} ({projectMaterials.length} materials)
-                                    </label>
-                                  </div>
-                                )
-                              })}
+                              <div className="text-xs text-gray-500 mt-1">Shown to non-admin users</div>
                             </div>
                           </div>
-                        </CardContent>
-                      </Card>
+                        </div>
+                      )
+                    })}
 
-                      {/* Material Selection */}
-                      {selectedLocationsForMaterial.length > 0 && (
-                        <div className="space-y-2">
-                          <p className="text-sm font-medium">Step 2: Add Materials</p>
+                    <div className="border rounded-lg p-4 bg-blue-50 space-y-4">
+                      <div>
+                        <Label className="text-sm font-medium mb-3 block flex items-center gap-2">
+                          <Building2 className="h-4 w-4" />
+                          1. Select Locations to Pull Materials From
+                        </Label>
+                        <ScrollArea className="h-48 border rounded-md p-3 bg-white">
+                          <div className="space-y-2">
+                            {/* Storage option */}
+                            <div className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded">
+                              <Checkbox
+                                id="location-storage"
+                                checked={selectedLocationsForMaterial.includes("storage")}
+                                onCheckedChange={(checked) => handleLocationToggle("storage", checked as boolean)}
+                              />
+                              <Label
+                                htmlFor="location-storage"
+                                className="flex items-center gap-2 cursor-pointer flex-1"
+                              >
+                                <Package className="h-4 w-4 text-blue-600" />
+                                <span className="font-medium">Central Storage</span>
+                                <span className="text-xs text-gray-500 ml-auto">
+                                  ({materials.filter((m) => !m.project_id).length} materials)
+                                </span>
+                              </Label>
+                            </div>
+
+                            {/* Project options */}
+                            {projects.map((project) => {
+                              const projectMaterialCount = materials.filter((m) => m.project_id === project.id).length
+                              return (
+                                <div
+                                  key={project.id}
+                                  className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded"
+                                >
+                                  <Checkbox
+                                    id={`location-${project.id}`}
+                                    checked={selectedLocationsForMaterial.includes(project.id)}
+                                    onCheckedChange={(checked) => handleLocationToggle(project.id, checked as boolean)}
+                                  />
+                                  <Label
+                                    htmlFor={`location-${project.id}`}
+                                    className="flex items-center gap-2 cursor-pointer flex-1"
+                                  >
+                                    <Building2 className="h-4 w-4 text-green-600" />
+                                    <span className="font-medium">{project.name}</span>
+                                    <span className="text-xs text-gray-500 ml-auto">
+                                      ({projectMaterialCount} materials)
+                                    </span>
+                                  </Label>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </ScrollArea>
+                        <div className="text-xs text-gray-600 mt-2 flex items-center gap-1">
+                          <CheckCircle className="h-3 w-3" />
+                          {selectedLocationsForMaterial.length} location(s) selected
+                        </div>
+                      </div>
+
+                      <div>
+                        <Label className="text-sm font-medium mb-2 block">
+                          2. Select Material from Selected Locations
+                        </Label>
+                        {availableMaterialsFromLocation.length > 0 ? (
                           <Select
-                            onValueChange={(value) => {
-                              const material = availableMaterialsFromLocation.find((m) => m.id === value)
-                              if (material) {
+                            onValueChange={(materialId) => {
+                              const material = materials.find((m) => m.id === materialId)
+                              if (material && !formData.materials_used.some((m) => m.material_id === materialId)) {
                                 const sourceLocation = material.project_id || "storage"
-                                handleMaterialChange(value, 1, 1, sourceLocation)
+                                handleMaterialChange(materialId, 0, 0, sourceLocation)
                               }
                             }}
                           >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select material to add" />
+                            <SelectTrigger className="bg-white">
+                              <SelectValue
+                                placeholder={`Select material (${availableMaterialsFromLocation.length} available)`}
+                              />
                             </SelectTrigger>
                             <SelectContent>
                               {availableMaterialsFromLocation.map((material) => {
-                                const sourceLocation = material.project_id || "storage"
-                                const locationName = getLocationName(sourceLocation)
+                                const locationName = material.project_id
+                                  ? getProjectName(material.project_id)
+                                  : "Central Storage"
                                 return (
                                   <SelectItem key={material.id} value={material.id}>
                                     <div className="flex items-center gap-2">
-                                      <MapPin className="h-3 w-3" />
-                                      {material.name} - {locationName} (Stock: {material.current_stock} {material.unit})
+                                      <span>{material.name}</span>
+                                      <span className="text-xs text-gray-500">
+                                        ({material.current_stock} {material.unit})
+                                      </span>
+                                      <Badge variant="outline" className="text-xs">
+                                        {locationName}
+                                      </Badge>
                                     </div>
                                   </SelectItem>
                                 )
                               })}
                             </SelectContent>
                           </Select>
-                        </div>
-                      )}
-
-                      {/* Selected Materials List */}
-                      {formData.materials_used.length > 0 && (
-                        <div className="space-y-2">
-                          <Label className="text-xs text-muted-foreground">Selected Materials:</Label>
-                          {formData.materials_used.map((mat) => {
-                            const material = materials.find((m) => m.id === mat.material_id)
-                            if (!material) return null
-                            
-                            return (
-                              <Card key={mat.material_id} className="p-3">
-                                <div className="space-y-2">
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                      <Package className="h-4 w-4 text-muted-foreground" />
-                                      <span className="font-medium">{material.name}</span>
-                                      <Badge variant="outline" className="text-xs">
-                                        <MapPin className="h-3 w-3 mr-1" />
-                                        {getLocationName(mat.source_location)}
-                                      </Badge>
-                                    </div>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => removeMaterial(mat.material_id)}
-                                    >
-                                      <X className="h-4 w-4" />
-                                    </Button>
-                                  </div>
-                                  
-                                  <div className="grid grid-cols-2 gap-2">
-                                    <div>
-                                      <Label className="text-xs">Visible Quantity ({material.unit})</Label>
-                                      <Input
-                                        type="number"
-                                        min="0"
-                                        value={mat.visible_quantity || 0}
-                                        onChange={(e) =>
-                                          handleMaterialChange(
-                                            mat.material_id,
-                                            mat.actual_quantity,
-                                            Number(e.target.value),
-                                            mat.source_location
-                                          )
-                                        }
-                                        placeholder="Visible qty"
-                                      />
-                                    </div>
-                                    {isAdmin && (
-                                      <div>
-                                        <Label className="text-xs flex items-center gap-1">
-                                          <Lock className="h-3 w-3" />
-                                          Actual Quantity ({material.unit})
-                                        </Label>
-                                        <Input
-                                          type="number"
-                                          min="0"
-                                          max={material.current_stock}
-                                          value={mat.actual_quantity || 0}
-                                          onChange={(e) =>
-                                            handleMaterialChange(
-                                              mat.material_id,
-                                              Number(e.target.value),
-                                              mat.visible_quantity,
-                                              mat.source_location
-                                            )
-                                          }
-                                          placeholder="Actual qty"
-                                        />
-                                      </div>
-                                    )}
-                                  </div>
-                                  <p className="text-xs text-muted-foreground">
-                                    Available: {material.current_stock} {material.unit}
-                                  </p>
-                                </div>
-                              </Card>
-                            )
-                          })}
-                        </div>
-                      )}
+                        ) : (
+                          <p className="text-sm text-gray-500 bg-white p-3 rounded border">
+                            {selectedLocationsForMaterial.length === 0
+                              ? "Please select at least one location above"
+                              : "No materials available in selected locations"}
+                          </p>
+                        )}
+                      </div>
                     </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="equipment_used">Equipment Used</Label>
-                      <Textarea
-                        id="equipment_used"
-                        value={formData.equipment_used}
-                        onChange={(e) => setFormData({ ...formData, equipment_used: e.target.value })}
-                        placeholder="Enter equipment used (comma or line separated)"
-                        rows={2}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="notes">Additional Notes</Label>
-                      <Textarea
-                        id="notes"
-                        value={formData.notes}
-                        onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                        placeholder="Any additional notes or observations..."
-                        rows={2}
-                      />
-                    </div>
+                    {/* </CHANGE> */}
                   </div>
+                  {/* </CHANGE> */}
+                </div>
 
-                  <div className="flex justify-end gap-2">
-                    <Button variant="outline" onClick={() => setShowAddDialog(false)}>
-                      Cancel
-                    </Button>
-                    <Button onClick={handleAddDailyLog} disabled={saving}>
-                      {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      Add Log
-                    </Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
-            )}
-          </div>
+                <div>
+                  <Label htmlFor="notes">Additional Notes</Label>
+                  <Textarea
+                    id="notes"
+                    placeholder="Any additional observations or notes"
+                    value={formData.notes}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, notes: e.target.value }))}
+                    rows={2}
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end space-x-2">
+                <Button variant="outline" onClick={() => setShowAddDialog(false)} disabled={saving}>
+                  Cancel
+                </Button>
+                <Button onClick={handleAddDailyLog} disabled={saving}>
+                  {saving ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Adding...
+                    </>
+                  ) : (
+                    "Add Daily Log"
+                  )}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        )}
+      </div>
+
+      {/* Filter Controls */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Filter className="h-5 w-5" />
+            Filter Daily Logs
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          {/* Filters */}
-          <Card className="mb-4">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Filter className="h-5 w-5" />
-                  <CardTitle className="text-base">Filter Daily Logs</CardTitle>
-                </div>
-                {hasActiveFilters && (
-                  <Button variant="ghost" size="sm" onClick={clearAllFilters}>
-                    <X className="mr-2 h-4 w-4" />
-                    Clear All Filters
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Date Filter */}
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4" />
-                  Filter by Date
-                </Label>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    { value: "all", label: "All Dates" },
-                    { value: "today", label: "Today" },
-                    { value: "week", label: "This Week" },
-                    { value: "month", label: "This Month" },
-                    { value: "custom", label: "Custom Range" },
-                  ].map((filter) => (
-                    <Button
-                      key={filter.value}
-                      variant={dateFilter.quickFilter === filter.value ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => handleQuickFilter(filter.value as any)}
-                    >
-                      {filter.label}
-                    </Button>
-                  ))}
-                </div>
-                
-                {dateFilter.quickFilter === "custom" && (
-                  <div className="grid grid-cols-2 gap-4 pt-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="from_date">From Date</Label>
-                      <Input
-                        id="from_date"
-                        type="date"
-                        value={dateFilter.fromDate}
-                        onChange={(e) =>
-                          setDateFilter({ ...dateFilter, fromDate: e.target.value })
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="to_date">To Date</Label>
-                      <Input
-                        id="to_date"
-                        type="date"
-                        value={dateFilter.toDate}
-                        onChange={(e) =>
-                          setDateFilter({ ...dateFilter, toDate: e.target.value })
-                        }
-                      />
-                    </div>
-                  </div>
-                )}
+          <div className="space-y-6">
+            {/* Date Filter Section */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4" />
+                <Label className="text-sm font-medium">Filter by Date</Label>
               </div>
 
-              {/* Project Filter */}
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2">
-                  <Building className="h-4 w-4" />
-                  Filter by Project
-                </Label>
+              {/* Quick Filter Buttons */}
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant={dateFilter.quickFilter === "all" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handleQuickFilter("all")}
+                >
+                  All Dates
+                </Button>
+                <Button
+                  variant={dateFilter.quickFilter === "today" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handleQuickFilter("today")}
+                >
+                  Today
+                </Button>
+                <Button
+                  variant={dateFilter.quickFilter === "week" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handleQuickFilter("week")}
+                >
+                  This Week
+                </Button>
+                <Button
+                  variant={dateFilter.quickFilter === "month" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handleQuickFilter("month")}
+                >
+                  This Month
+                </Button>
+                <Button
+                  variant={dateFilter.quickFilter === "custom" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handleQuickFilter("custom")}
+                >
+                  Custom Range
+                </Button>
+              </div>
+
+              {/* Custom Date Range Inputs */}
+              {dateFilter.quickFilter === "custom" && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="fromDate">From Date</Label>
+                    <Input
+                      id="fromDate"
+                      type="date"
+                      value={dateFilter.fromDate}
+                      onChange={(e) => setDateFilter((prev) => ({ ...prev, fromDate: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="toDate">To Date</Label>
+                    <Input
+                      id="toDate"
+                      type="date"
+                      value={dateFilter.toDate}
+                      onChange={(e) => setDateFilter((prev) => ({ ...prev, toDate: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Project Filter Section */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Building className="h-4 w-4" />
+                <Label className="text-sm font-medium">Filter by Project</Label>
+              </div>
+
+              <div className="max-w-xs">
                 <Select value={projectFilter} onValueChange={setProjectFilter}>
                   <SelectTrigger>
                     <SelectValue placeholder="All Projects" />
@@ -1402,143 +1428,306 @@ export default function DailyLogsTab({
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            {/* Filter Summary and Clear Button */}
+            <div className="flex items-center justify-between pt-4 border-t">
+              <div className="text-sm text-gray-600">
+                {hasActiveFilters ? (
+                  <>
+                    Showing {filteredLogs.length} of {totalLogs} logs
+                    {dateFilter.fromDate && dateFilter.toDate && (
+                      <span className="ml-2">
+                        from {new Date(dateFilter.fromDate).toLocaleDateString()} to{" "}
+                        {new Date(dateFilter.toDate).toLocaleDateString()}
+                      </span>
+                    )}
+                    {projectFilter !== "all" && (
+                      <span className="ml-2">for project: {getProjectName(projectFilter)}</span>
+                    )}
+                  </>
+                ) : (
+                  `Showing all ${totalLogs} logs`
+                )}
+              </div>
 
               {hasActiveFilters && (
-                <p className="text-sm text-muted-foreground">
-                  Showing all {filteredTotalLogs} logs
-                </p>
+                <Button variant="ghost" size="sm" onClick={clearAllFilters}>
+                  <X className="h-4 w-4 mr-1" />
+                  Clear All Filters
+                </Button>
               )}
-            </CardContent>
-          </Card>
-
-          {/* Daily Logs Table */}
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date (Newest First)</TableHead>
-                  <TableHead>Project</TableHead>
-                  <TableHead>Work Description</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Hours</TableHead>
-                  <TableHead>Workers</TableHead>
-                  <TableHead>Weather</TableHead>
-                  <TableHead>Materials Used</TableHead>
-                  <TableHead>Created By</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredLogs.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
-                      No daily logs found. Add your first log to get started!
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredLogs.map((log) => {
-                    const statusConfig = getStatusConfig(log.status || "completed")
-                    const StatusIcon = statusConfig.icon
-                    
-                    return (
-                      <TableRow key={log.id}>
-                        <TableCell>{new Date(log.date).toLocaleDateString()}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{getProjectName(log.project_id)}</Badge>
-                        </TableCell>
-                        <TableCell className="max-w-xs">
-                          <p className="truncate" title={log.work_description || log.work_completed}>
-                            {log.work_description || log.work_completed || "N/A"}
-                          </p>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="flex items-center gap-1 w-fit">
-                            <StatusIcon className="h-3 w-3" />
-                            {statusConfig.label}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{log.hours_worked || 0}h</TableCell>
-                        <TableCell>
-                          <Badge variant="secondary">
-                            <Users className="mr-1 h-3 w-3" />
-                            {Array.isArray(log.workers_present) ? log.workers_present.length : 0}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{log.weather || log.weather_conditions || "N/A"}</TableCell>
-                        <TableCell>
-                          <Badge variant="secondary">
-                            <Package className="mr-1 h-3 w-3" />
-                            {Array.isArray(log.materials_used) ? log.materials_used.length : 0}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <User className="h-3 w-3 text-muted-foreground" />
-                            <span className="text-sm">{log.created_by_user_name || "Unknown User"}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Button variant="ghost" size="sm" onClick={() => handleView(log)}>
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            {canEditDailyLogs && (
-                              <Button variant="ghost" size="sm" onClick={() => handleEdit(log)}>
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                            )}
-                            {canDeleteDailyLogs && (
-                              <Button variant="ghost" size="sm" onClick={() => handleDelete(log)}>
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })
-                )}
-              </TableBody>
-            </Table>
+            </div>
           </div>
+        </CardContent>
+      </Card>
 
-          {/* Pagination */}
-          <div className="flex items-center justify-between pt-4">
-            <p className="text-sm text-muted-foreground">
+      {/* Statistics Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">{hasActiveFilters ? "Filtered Logs" : "Total Logs"}</CardTitle>
+            <FileText className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.totalLogs}</div>
+            <p className="text-xs text-muted-foreground">{hasActiveFilters ? "In selected filters" : "All time"}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">This Week</CardTitle>
+            <Calendar className="h-4 w-4 text-green-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">{stats.thisWeekCount}</div>
+            <p className="text-xs text-muted-foreground">Last 7 days</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">This Month</CardTitle>
+            <Clock className="h-4 w-4 text-blue-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-blue-600">{stats.thisMonthCount}</div>
+            <p className="text-xs text-muted-foreground">Last 30 days</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active Projects</CardTitle>
+            <MapPin className="h-4 w-4 text-purple-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-purple-600">{stats.activeProjects}</div>
+            <p className="text-xs text-muted-foreground">With logs in range</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Status Statistics */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Log Status Overview</CardTitle>
+          <CardDescription>Distribution of daily log statuses</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {statusStats.map((status) => (
+              <div key={status.value} className="flex items-center gap-3 p-3 border rounded-lg">
+                <div className={`w-3 h-3 rounded-full ${status.color}`} />
+                <div className="flex-1">
+                  <div className="flex items-center gap-1">
+                    <status.icon className="h-4 w-4" />
+                    <span className="text-sm font-medium">{status.label}</span>
+                  </div>
+                  <div className="text-2xl font-bold">{status.count}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Daily Logs Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Daily Work Logs</CardTitle>
+          <CardDescription>
+            {canAddDailyLogs && !isAdmin
+              ? "Track daily work progress and material usage (Manager Access)"
+              : isAdmin
+                ? "Track daily work progress and material usage with dual tracking"
+                : "View daily work progress and material usage"}
+            {filteredLogs.length !== dailyLogs.length && (
+              <span className="ml-2 text-blue-600">
+                (Showing {filteredLogs.length} of {totalLogs} logs)
+              </span>
+            )}
+            <span className="ml-2 text-gray-600 font-semibold">
+              Total Logs: {totalLogs} | Page {currentPage} of {totalPages}
+            </span>
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="flex items-center gap-1">
+                  Date
+                  <span className="text-xs text-gray-400">(Newest First)</span>
+                </TableHead>
+                <TableHead>Project</TableHead>
+                <TableHead>Work Description</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Hours</TableHead>
+                <TableHead>Workers</TableHead>
+                <TableHead>Weather</TableHead>
+                <TableHead>Materials Used</TableHead>
+                <TableHead>Created By</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredLogs
+                .sort((a, b) => {
+                  // Sort by date from newest to oldest
+                  const dateA = new Date(a.date).getTime()
+                  const dateB = new Date(b.date).getTime()
+                  return dateB - dateA
+                })
+                .map((log) => {
+                  const workersPresent = Array.isArray(log.workers_present)
+                    ? log.workers_present
+                    : JSON.parse(log.workers_present || "[]")
+
+                  // Parse materials_used and handle both old and new formats
+                  let materialsUsed = log.materials_used
+                  if (typeof materialsUsed === "string") {
+                    try {
+                      materialsUsed = JSON.parse(materialsUsed)
+                    } catch (e) {
+                      materialsUsed = []
+                    }
+                  }
+
+                  const statusConfig = getStatusConfig(log.status || "completed")
+
+                  return (
+                    <TableRow key={log.id}>
+                      <TableCell>
+                        <div className="flex items-center">
+                          <Calendar className="h-4 w-4 mr-2 text-gray-400" />
+                          {new Date(log.date).toLocaleDateString()}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{getProjectName(log.project_id)}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="max-w-xs truncate">{log.work_description || log.work_completed}</div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className="flex items-center gap-1 w-fit">
+                          <statusConfig.icon className="h-3 w-3" />
+                          {statusConfig.label}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center">
+                          <Clock className="h-4 w-4 mr-2 text-gray-400" />
+                          <span className="text-sm">{log.hours_worked || 0}h</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center">
+                          <Users className="h-4 w-4 mr-2 text-gray-400" />
+                          <span className="text-sm">{workersPresent.length} workers</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">{log.weather_conditions || log.weather || "N/A"}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <Package className="h-4 w-4 mr-2 text-gray-400" />
+                          <span className="text-sm">
+                            {Array.isArray(materialsUsed) ? materialsUsed.length : 0} items
+                          </span>
+                          {isAdmin &&
+                            Array.isArray(materialsUsed) &&
+                            materialsUsed.some((m) => m.actual_quantity !== m.visible_quantity) && (
+                              <div className="flex items-center gap-1 text-xs text-blue-600">
+                                <Lock className="h-3 w-3" />
+                                <span>Dual</span>
+                              </div>
+                            )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <User className="h-4 w-4 text-gray-400" />
+                          <span className="text-sm">{log.created_by_user_name || "Unknown User"}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex space-x-2">
+                          <Button variant="outline" size="sm" onClick={() => handleView(log)}>
+                            <Eye className="h-3 w-3" />
+                          </Button>
+                          {canEditDailyLogs && (
+                            <Button variant="outline" size="sm" onClick={() => handleEdit(log)}>
+                              <Edit className="h-3 w-3" />
+                            </Button>
+                          )}
+                          {canDeleteDailyLogs && (
+                            <Button variant="outline" size="sm" onClick={() => handleDelete(log)}>
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+            </TableBody>
+          </Table>
+          {filteredLogs.length === 0 && (
+            <div className="text-center py-8">
+              <p className="text-gray-500">
+                {hasActiveFilters
+                  ? "No logs found matching the selected filters. Try adjusting your filter criteria."
+                  : canAddDailyLogs
+                    ? "No daily logs found. Add your first log to get started!"
+                    : "No daily logs available to view."}
+              </p>
+            </div>
+          )}
+          <div className="flex items-center justify-between mt-4">
+            <div className="text-sm text-gray-500">
               Showing {Math.min((currentPage - 1) * logsPerPage + 1, totalLogs)} to{" "}
               {Math.min(currentPage * logsPerPage, totalLogs)} of {totalLogs} logs
-            </p>
-            <div className="flex items-center gap-2">
+            </div>
+            <div className="flex gap-2">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => handlePageChange(currentPage - 1)}
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
               >
                 <ChevronLeft className="h-4 w-4 mr-1" />
                 Previous
               </Button>
-              
-              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                const page = currentPage <= 3 ? i + 1 : currentPage - 2 + i
-                if (page > totalPages) return null
-                
-                return (
-                  <Button
-                    key={page}
-                    variant={currentPage === page ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => handlePageChange(page)}
-                  >
-                    {page}
-                  </Button>
-                )
-              })}
-              
+              <div className="flex items-center gap-2">
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum
+                  if (totalPages <= 5) {
+                    pageNum = i + 1
+                  } else if (currentPage <= 3) {
+                    pageNum = i + 1
+                  } else if (currentPage >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i
+                  } else {
+                    pageNum = currentPage - 2 + i
+                  }
+
+                  return (
+                    <Button
+                      key={pageNum}
+                      variant={currentPage === pageNum ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setCurrentPage(pageNum)}
+                    >
+                      {pageNum}
+                    </Button>
+                  )
+                })}
+              </div>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => handlePageChange(currentPage + 1)}
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}
               >
                 Next
@@ -1551,123 +1740,628 @@ export default function DailyLogsTab({
 
       {/* View Dialog */}
       <Dialog open={showViewDialog} onOpenChange={setShowViewDialog}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Daily Log Details</DialogTitle>
-            <DialogDescription>
-              {selectedLog && `Log from ${new Date(selectedLog.date).toLocaleDateString()}`}
-            </DialogDescription>
+            <DialogDescription>View daily log information</DialogDescription>
           </DialogHeader>
-          
           {selectedLog && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-muted-foreground">Date</Label>
-                  <p>{new Date(selectedLog.date).toLocaleDateString()}</p>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground">Project</Label>
-                  <p>{getProjectName(selectedLog.project_id)}</p>
-                </div>
-              </div>
-              
-              <div>
-                <Label className="text-muted-foreground">Work Description</Label>
-                <p className="mt-1">{selectedLog.work_description || selectedLog.work_completed}</p>
-              </div>
-              
+            <div className="space-y-6">
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <Label className="text-muted-foreground">Status</Label>
-                  <Badge className="mt-1">{getStatusConfig(selectedLog.status || "completed").label}</Badge>
+                  <Label className="text-sm font-medium">Date</Label>
+                  <p className="text-sm text-gray-600">{new Date(selectedLog.date).toLocaleDateString()}</p>
                 </div>
                 <div>
-                  <Label className="text-muted-foreground">Hours Worked</Label>
-                  <p className="mt-1">{selectedLog.hours_worked || 0} hours</p>
+                  <Label className="text-sm font-medium">Project</Label>
+                  <div className="mt-1">
+                    <Badge variant="outline">{getProjectName(selectedLog.project_id)}</Badge>
+                  </div>
                 </div>
                 <div>
-                  <Label className="text-muted-foreground">Weather</Label>
-                  <p className="mt-1">{selectedLog.weather || selectedLog.weather_conditions || "N/A"}</p>
+                  <Label className="text-sm font-medium">Created By</Label>
+                  <div className="flex items-center gap-1 mt-1">
+                    <User className="h-4 w-4 text-gray-400" />
+                    <span className="text-sm text-gray-600">{selectedLog.created_by_user_name || "Unknown User"}</span>
+                  </div>
                 </div>
               </div>
-              
+
               <div>
-                <Label className="text-muted-foreground">Workers Present</Label>
-                <div className="flex flex-wrap gap-2 mt-1">
-                  {Array.isArray(selectedLog.workers_present) && selectedLog.workers_present.length > 0 ? (
-                    selectedLog.workers_present.map((workerId) => (
-                      <Badge key={workerId} variant="secondary">
-                        {getWorkerName(workerId)}
-                      </Badge>
-                    ))
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No workers assigned</p>
-                  )}
-                </div>
-              </div>
-              
-              <div>
-                <Label className="text-muted-foreground">Materials Used</Label>
-                <div className="space-y-2 mt-1">
-                  {Array.isArray(selectedLog.materials_used) && selectedLog.materials_used.length > 0 ? (
-                    selectedLog.materials_used.map((mat, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-2 border rounded">
-                        <span>{getMaterialName(mat.material_id)}</span>
-                        <div className="flex items-center gap-2">
-                          {isAdmin && (
-                            <Badge variant="outline">
-                              Actual: {mat.actual_quantity || mat.quantity} {getMaterialUnit(mat.material_id)}
-                            </Badge>
-                          )}
-                          <Badge variant="secondary">
-                            Visible: {mat.visible_quantity || mat.quantity} {getMaterialUnit(mat.material_id)}
-                          </Badge>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No materials used</p>
-                  )}
-                </div>
-              </div>
-              
-              <div>
-                <Label className="text-muted-foreground">Equipment Used</Label>
-                <p className="mt-1">
-                  {Array.isArray(selectedLog.equipment_used)
-                    ? selectedLog.equipment_used.join(", ")
-                    : selectedLog.equipment_used || "N/A"}
+                <Label className="text-sm font-medium">Work Description</Label>
+                <p className="text-sm text-gray-600 mt-1">
+                  {selectedLog.work_description || selectedLog.work_completed}
                 </p>
               </div>
-              
-              <div>
-                <Label className="text-muted-foreground">Created By</Label>
-                <p className="mt-1">{selectedLog.created_by_user_name || "Unknown User"}</p>
+
+              <div className="grid grid-cols-4 gap-4">
+                <div>
+                  <Label className="text-sm font-medium">Working Place</Label>
+                  <p className="text-sm text-gray-600">{selectedLog.working_place || "Not specified"}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Weather Conditions</Label>
+                  <div className="mt-1">
+                    <Badge variant="secondary">{selectedLog.weather_conditions || selectedLog.weather || "N/A"}</Badge>
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Hours Worked</Label>
+                  <p className="text-sm text-gray-600">{selectedLog.hours_worked || 0} hours</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Status</Label>
+                  <div className="mt-1">
+                    {(() => {
+                      const statusConfig = getStatusConfig(selectedLog.status || "completed")
+                      return (
+                        <Badge variant="secondary" className="flex items-center gap-1 w-fit">
+                          <statusConfig.icon className="h-3 w-3" />
+                          {statusConfig.label}
+                        </Badge>
+                      )
+                    })()}
+                  </div>
+                </div>
               </div>
+
+              <div>
+                <Label className="text-sm font-medium">Equipment Used</Label>
+                <div className="mt-2">
+                  {Array.isArray(selectedLog.equipment_used) && selectedLog.equipment_used.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {selectedLog.equipment_used.map((equipment: string, index: number) => (
+                        <Badge key={index} variant="outline">
+                          {equipment}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-400">No equipment specified</p>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-sm font-medium">Workers Present</Label>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {(() => {
+                    const workersPresent = Array.isArray(selectedLog.workers_present)
+                      ? selectedLog.workers_present
+                      : JSON.parse(selectedLog.workers_present || "[]")
+                    return workersPresent.length > 0 ? (
+                      workersPresent.map((workerId: string | number, index: number) => (
+                        <Badge key={index} variant="outline">
+                          {getWorkerName(workerId)}
+                        </Badge>
+                      ))
+                    ) : (
+                      <span className="text-gray-400 text-sm">No workers specified</span>
+                    )
+                  })()}
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-sm font-medium">Materials Used</Label>
+                <div className="mt-2">
+                  {(() => {
+                    let materialsUsed = selectedLog.materials_used
+                    if (typeof materialsUsed === "string") {
+                      try {
+                        materialsUsed = JSON.parse(materialsUsed)
+                      } catch (e) {
+                        materialsUsed = []
+                      }
+                    }
+
+                    return Array.isArray(materialsUsed) && materialsUsed.length > 0 ? (
+                      <div className="space-y-2">
+                        {materialsUsed.map((materialUsed: any, index: number) => {
+                          // Handle both old and new formats
+                          const actualQty =
+                            materialUsed.actual_quantity !== undefined
+                              ? materialUsed.actual_quantity
+                              : materialUsed.quantity || 0
+                          const visibleQty =
+                            materialUsed.visible_quantity !== undefined
+                              ? materialUsed.visible_quantity
+                              : materialUsed.quantity || 0
+                          const hasDualTracking = actualQty !== visibleQty
+
+                          return (
+                            <div key={index} className="flex items-center justify-between p-3 border rounded">
+                              <div className="flex flex-col">
+                                <span className="font-medium">{getMaterialName(materialUsed.material_id)}</span>
+                                {hasDualTracking && isAdmin && (
+                                  <div className="text-xs text-gray-500 mt-1 flex items-center gap-2">
+                                    <div className="flex items-center gap-1">
+                                      <Lock className="h-3 w-3" />
+                                      <span>
+                                        Actual: {actualQty} {getMaterialUnit(materialUsed.material_id)}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <Unlock className="h-3 w-3" />
+                                      <span>
+                                        Visible: {visibleQty} {getMaterialUnit(materialUsed.material_id)}
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                              <span className="text-sm text-gray-600">
+                                {isAdmin ? actualQty : visibleQty} {getMaterialUnit(materialUsed.material_id)}
+                              </span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <span className="text-gray-400 text-sm">No materials used</span>
+                    )
+                  })()}
+                </div>
+              </div>
+
+              {selectedLog.notes && (
+                <div>
+                  <Label className="text-sm font-medium">Additional Notes</Label>
+                  <p className="text-sm text-gray-600 mt-1">{selectedLog.notes}</p>
+                </div>
+              )}
             </div>
           )}
+          <div className="flex justify-end">
+            <Button onClick={() => setShowViewDialog(false)}>Close</Button>
+          </div>
         </DialogContent>
       </Dialog>
 
+      {/* Edit Dialog */}
+      {canEditDailyLogs && (
+        <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Edit Daily Log</DialogTitle>
+              <DialogDescription>Update daily work progress and material usage with dual tracking</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="edit-date">Date *</Label>
+                  <Input
+                    id="edit-date"
+                    type="date"
+                    value={formData.date}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, date: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-project">Project *</Label>
+                  <Select
+                    value={formData.project_id}
+                    onValueChange={(value) => setFormData((prev) => ({ ...prev, project_id: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select project" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {projects.map((project) => (
+                        <SelectItem key={project.id} value={project.id}>
+                          {project.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="edit-work_description">Work Description *</Label>
+                <Textarea
+                  id="edit-work_description"
+                  placeholder="Describe the work performed today"
+                  value={formData.work_description}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, work_description: e.target.value }))}
+                  rows={3}
+                />
+              </div>
+
+              <div className="grid grid-cols-4 gap-4">
+                <div>
+                  <Label htmlFor="edit-working_place">Working Place</Label>
+                  <Input
+                    id="edit-working_place"
+                    placeholder="Specific location or area"
+                    value={formData.working_place}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, working_place: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-weather_conditions">Weather Conditions</Label>
+                  <Select
+                    value={formData.weather_conditions}
+                    onValueChange={(value) => setFormData((prev) => ({ ...prev, weather_conditions: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select weather" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {weatherOptions.map((weather) => (
+                        <SelectItem key={weather} value={weather}>
+                          {weather}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="edit-hours_worked">Hours Worked *</Label>
+                  <Input
+                    id="edit-hours_worked"
+                    type="number"
+                    min="0"
+                    max="24"
+                    step="0.5"
+                    value={formData.hours_worked}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, hours_worked: Number.parseFloat(e.target.value) || 0 }))
+                    }
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-status">Status *</Label>
+                  <Select
+                    value={formData.status}
+                    onValueChange={(value) => setFormData((prev) => ({ ...prev, status: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {statusOptions.map((status) => (
+                        <SelectItem key={status.value} value={status.value}>
+                          <div className="flex items-center gap-2">
+                            <status.icon className="h-4 w-4" />
+                            {status.label}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="edit-equipment_used">Equipment Used</Label>
+                <Textarea
+                  id="edit-equipment_used"
+                  placeholder="List equipment and machinery used (separate with commas or new lines)"
+                  value={formData.equipment_used}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, equipment_used: e.target.value }))}
+                  rows={2}
+                />
+              </div>
+
+              <div>
+                <Label>Workers Present</Label>
+                <ScrollArea className="h-32 border rounded-md p-3">
+                  <div className="space-y-2">
+                    {workers
+                      .filter((worker) => worker.status === "Active")
+                      .map((worker) => {
+                        // Check if this worker should be selected using multiple comparison methods
+                        const isChecked =
+                          formData.workers_present.includes(String(worker.id)) ||
+                          formData.workers_present.includes(worker.id) ||
+                          formData.workers_present.some((id) => String(id) === String(worker.id))
+
+                      
+
+                        return (
+                          <div key={worker.id} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`edit-worker-${worker.id}`}
+                              checked={isChecked}
+                              onCheckedChange={(checked) => {
+                                
+                                handleWorkerToggle(String(worker.id), checked as boolean)
+                              }}
+                            />
+                            <Label htmlFor={`edit-worker-${worker.id}`} className="text-sm">
+                              {worker.name} - {worker.role}
+                            </Label>
+                          </div>
+                        )
+                      })}
+                  </div>
+                </ScrollArea>
+              </div>
+
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <Label>Materials Used</Label>
+                  <div className="flex items-center gap-1 text-xs text-gray-500 bg-blue-50 px-2 py-1 rounded">
+                    <Info className="h-3 w-3" />
+                    Dual tracking: Actual usage affects inventory, Visible usage shown to non-admins
+                  </div>
+                </div>
+                
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-sm font-medium mb-2 block flex items-center gap-1">
+                        <MapPin className="h-4 w-4" />
+                        1. Select Locations to Pull Materials From
+                      </Label>
+                      <ScrollArea className="h-48 border rounded-md p-3 bg-white">
+                        <div className="space-y-2">
+                          {/* Storage option */}
+                          <div className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded">
+                            <Checkbox
+                              id="edit-location-storage"
+                              checked={selectedLocationsForMaterial.includes("storage")}
+                              onCheckedChange={(checked) => handleLocationToggle("storage", checked as boolean)}
+                            />
+                            <Label
+                              htmlFor="edit-location-storage"
+                              className="flex items-center gap-2 cursor-pointer flex-1"
+                            >
+                              <Package className="h-4 w-4 text-blue-600" />
+                              <span className="font-medium">Central Storage</span>
+                              <span className="text-xs text-gray-500 ml-auto">
+                                ({materials.filter((m) => !m.project_id).length} materials)
+                              </span>
+                            </Label>
+                          </div>
+
+                          {/* Project options */}
+                          {projects.map((project) => {
+                            const projectMaterialCount = materials.filter((m) => m.project_id === project.id).length
+                            return (
+                              <div
+                                key={project.id}
+                                className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded"
+                              >
+                                <Checkbox
+                                  id={`edit-location-${project.id}`}
+                                  checked={selectedLocationsForMaterial.includes(project.id)}
+                                  onCheckedChange={(checked) => handleLocationToggle(project.id, checked as boolean)}
+                                />
+                                <Label
+                                  htmlFor={`edit-location-${project.id}`}
+                                  className="flex items-center gap-2 cursor-pointer flex-1"
+                                >
+                                  <Building2 className="h-4 w-4 text-green-600" />
+                                  <span className="font-medium">{project.name}</span>
+                                  <span className="text-xs text-gray-500 ml-auto">
+                                    ({projectMaterialCount} materials)
+                                  </span>
+                                </Label>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </ScrollArea>
+                      <div className="text-xs text-gray-600 mt-2 flex items-center gap-1">
+                        <CheckCircle className="h-3 w-3" />
+                        {selectedLocationsForMaterial.length} location(s) selected
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label className="text-sm font-medium mb-2 block">
+                        2. Select Material from Selected Locations
+                      </Label>
+                      {availableMaterialsFromLocation.length > 0 ? (
+                        <Select
+                          onValueChange={(materialId) => {
+                            const material = materials.find((m) => m.id === materialId)
+                            if (material && !formData.materials_used.some((m) => m.material_id === materialId)) {
+                              const sourceLocation = material.project_id || "storage"
+                              handleMaterialChange(materialId, 0, 0, sourceLocation)
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="bg-white">
+                            <SelectValue
+                              placeholder={`Select material (${availableMaterialsFromLocation.length} available)`}
+                            />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableMaterialsFromLocation.map((material) => {
+                              const locationName = material.project_id
+                                ? getProjectName(material.project_id)
+                                : "Central Storage"
+                              return (
+                                <SelectItem key={material.id} value={material.id}>
+                                  <div className="flex items-center gap-2">
+                                    <span>{material.name}</span>
+                                    <Badge variant="outline" className="ml-auto text-xs">
+                                      {material.project_id ? (
+                                        <Building2 className="h-3 w-3 mr-1 inline" />
+                                      ) : (
+                                        <Package className="h-3 w-3 mr-1 inline" />
+                                      )}
+                                      {locationName}
+                                    </Badge>
+                                    <span className="text-xs text-gray-500">
+                                      ({material.current_stock} {material.unit})
+                                    </span>
+                                  </div>
+                                </SelectItem>
+                              )
+                            })}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <div className="text-sm text-gray-500 bg-gray-50 p-3 rounded border">
+                          No materials available in selected locations. Please select at least one location above.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                {/* </CHANGE> */}
+                
+                <div className="space-y-3">
+                  {formData.materials_used.map((materialUsed, index) => (
+                    <div key={index} className="p-4 border rounded-lg bg-gray-50">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{getMaterialName(materialUsed.material_id)}</span>
+                          <Badge variant="outline" className="text-xs">
+                            {materialUsed.source_location === "storage" ? (
+                              <>
+                                <Package className="h-3 w-3 mr-1" />
+                                Central Storage
+                              </>
+                            ) : (
+                              <>
+                                <Building2 className="h-3 w-3 mr-1" />
+                                {getLocationName(materialUsed.source_location)}
+                              </>
+                            )}
+                          </Badge>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeMaterial(materialUsed.material_id)}
+                          className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label
+                            htmlFor={`edit-material-actual-${materialUsed.material_id}`}
+                            className="text-xs flex items-center gap-1"
+                          >
+                            <Lock className="h-3 w-3" />
+                            Actual Usage (Internal)
+                          </Label>
+                          <div className="flex items-center">
+                            <Input
+                              id={`edit-material-actual-${materialUsed.material_id}`}
+                              type="number"
+                              step="0.1"
+                              placeholder="Actual qty"
+                              value={materialUsed.actual_quantity}
+                              onChange={(e) =>
+                                handleMaterialChange(
+                                  materialUsed.material_id,
+                                  Number.parseFloat(e.target.value) || 0,
+                                  materialUsed.visible_quantity,
+                                  materialUsed.source_location,
+                                )
+                              }
+                              className="flex-1"
+                            />
+                            <span className="text-sm text-gray-500 ml-2 w-12">
+                              {getMaterialUnit(materialUsed.material_id)}
+                            </span>
+                          </div>
+                          <div className="text-xs text-gray-500 mt-1">Affects inventory calculations</div>
+                        </div>
+                        <div>
+                          <Label
+                            htmlFor={`edit-material-visible-${materialUsed.material_id}`}
+                            className="text-xs flex items-center gap-1"
+                          >
+                            <Unlock className="h-3 w-3" />
+                            Visible Usage (Public)
+                          </Label>
+                          <div className="flex items-center">
+                            <Input
+                              id={`edit-material-visible-${materialUsed.material_id}`}
+                              type="number"
+                              step="0.1"
+                              placeholder="Visible qty"
+                              value={materialUsed.visible_quantity}
+                              onChange={(e) =>
+                                handleMaterialChange(
+                                  materialUsed.material_id,
+                                  materialUsed.actual_quantity,
+                                  Number.parseFloat(e.target.value) || 0,
+                                  materialUsed.source_location,
+                                )
+                              }
+                              className="flex-1"
+                            />
+                            <span className="text-sm text-gray-500 ml-2 w-12">
+                              {getMaterialUnit(materialUsed.material_id)}
+                            </span>
+                          </div>
+                          <div className="text-xs text-gray-500 mt-1">Shown to non-admin users</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {/* </CHANGE> */}
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="edit-notes">Additional Notes</Label>
+                <Textarea
+                  id="edit-notes"
+                  placeholder="Any additional observations or notes"
+                  value={formData.notes}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, notes: e.target.value }))}
+                  rows={2}
+                />
+              </div>
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => setShowEditDialog(false)} disabled={saving}>
+                Cancel
+              </Button>
+              <Button onClick={handleUpdateDailyLog} disabled={saving}>
+                {saving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Updating...
+                  </>
+                ) : (
+                  "Update Daily Log"
+                )}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {/* Delete Confirmation Dialog */}
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete this daily log. Material stock will be restored if materials were used.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} disabled={deleting} className="bg-destructive">
-              {deleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {canDeleteDailyLogs && (
+        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete the daily log for{" "}
+                {selectedLog && new Date(selectedLog.date).toLocaleDateString()} and all its data. This action cannot be
+                undone and will restore any materials used back to inventory.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={confirmDelete} disabled={deleting} className="bg-red-600 hover:bg-red-700">
+                {deleting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Deleting…
+                  </>
+                ) : (
+                  "Delete Log"
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   )
 }
