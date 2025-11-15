@@ -94,3 +94,8 @@ body {
     @apply bg-background text-foreground;
   }
 }
+
+/* Add explicit utility classes to ensure Tailwind processes common styles */
+.bg-gradient-to-br { background-image: linear-gradient(to bottom right, var(--tw-gradient-stops)); }
+.from-blue-50 { --tw-gradient-from: #eff6ff var(--tw-gradient-from-position); --tw-gradient-to: rgb(239 246 255 / 0) var(--tw-gradient-to-position); --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to); }
+.to-indigo-100 { --tw-gradient-to: #e0e7ff var(--tw-gradient-to-position); }
