@@ -37,6 +37,7 @@ import {
   updateMaterial,
   getDailyLogs,
   getDailyLogsCount,
+  getDailyLogsStats, // Import getDailyLogsStats
 } from "@/lib/database"
 import type { DailyLog, Project, Worker, Material } from "@/lib/database"
 import { useToast } from "@/hooks/use-toast"
@@ -78,6 +79,14 @@ export default function DailyLogsTab({
   const [totalLogs, setTotalLogs] = useState(0)
   const logsPerPage = 20
 
+  // State for statistics, initialized to 0
+  const [stats, setStats] = useState({
+    totalLogs: 0,
+    thisWeekCount: 0,
+    thisMonthCount: 0,
+    activeProjects: 0,
+  })
+
   // Date filtering state
   const [dateFilter, setDateFilter] = useState({
     fromDate: "",
@@ -93,13 +102,33 @@ export default function DailyLogsTab({
   useEffect(() => {
     const loadPaginatedLogs = async () => {
       const offset = (currentPage - 1) * logsPerPage
-      const logs = await getDailyLogs(logsPerPage, offset)
-      const count = await getDailyLogsCount()
+      const logs = await getDailyLogs(logsPerPage, offset, {
+        dateFilter,
+        projectFilter,
+      }) // Pass filters to getDailyLogs
+      const count = await getDailyLogsCount({ dateFilter, projectFilter }) // Pass filters to getDailyLogsCount
       setDailyLogs(logs)
       setTotalLogs(count)
     }
     loadPaginatedLogs()
-  }, [currentPage, setDailyLogs])
+  }, [currentPage, setDailyLogs, dateFilter, projectFilter]) // Add filters to dependency array
+
+  useEffect(() => {
+    const loadStats = async () => {
+      const stats = await getDailyLogsStats({
+        dateFilter,
+        projectFilter,
+      })
+      setStats({
+        totalLogs: stats.totalLogs,
+        thisWeekCount: stats.thisWeekCount,
+        thisMonthCount: stats.thisMonthCount,
+        activeProjects: stats.activeProjects,
+      })
+      // Statistics are now calculated from all logs matching the filters, not just the current page
+    }
+    loadStats()
+  }, [dateFilter, projectFilter])
 
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split("T")[0],
@@ -186,6 +215,7 @@ export default function DailyLogsTab({
         toDate: range.toDate,
       })
     }
+    setCurrentPage(1) // Reset to first page when filters change
   }
 
   const clearDateFilter = () => {
@@ -358,8 +388,8 @@ export default function DailyLogsTab({
 
       // setDailyLogs([...dailyLogs, newLog]) // Remove this line
       setCurrentPage(1)
-      const logs = await getDailyLogs(logsPerPage, 0)
-      const count = await getDailyLogsCount()
+      const logs = await getDailyLogs(logsPerPage, 0, { dateFilter, projectFilter }) // Pass filters
+      const count = await getDailyLogsCount({ dateFilter, projectFilter }) // Pass filters
       setDailyLogs(logs)
       setTotalLogs(count)
 
@@ -409,7 +439,7 @@ export default function DailyLogsTab({
     }
 
     // Parse materials_used - handle both old and new formats
-    let materialsUsed: { material_id: string; actual_quantity: number; visible_quantity: number }[] = []
+    let materialsUsed: { material_id: string; actual_quantity: number; visible_quantity: number; source_location: string }[] = []
     try {
       if (Array.isArray(log.materials_used)) {
         materialsUsed = log.materials_used.map((material) => ({
@@ -418,6 +448,7 @@ export default function DailyLogsTab({
           actual_quantity: material.actual_quantity !== undefined ? material.actual_quantity : material.quantity || 0,
           visible_quantity:
             material.visible_quantity !== undefined ? material.visible_quantity : material.quantity || 0,
+          source_location: material.source_location || "", // Handle potential missing source_location
         }))
       } else if (typeof log.materials_used === "string") {
         const parsed = JSON.parse(log.materials_used || "[]")
@@ -428,6 +459,7 @@ export default function DailyLogsTab({
                 material.actual_quantity !== undefined ? material.actual_quantity : material.quantity || 0,
               visible_quantity:
                 material.visible_quantity !== undefined ? material.visible_quantity : material.quantity || 0,
+              source_location: material.source_location || "", // Handle potential missing source_location
             }))
           : []
       }
@@ -462,6 +494,14 @@ export default function DailyLogsTab({
       status: log.status || "completed",
       notes: log.notes || "",
     })
+    // Set initial selected locations based on the materials used in the log
+    const initialLocations = new Set<string>(["storage"]) // Default to storage
+    materialsUsed.forEach(mat => {
+      if (mat.source_location) {
+        initialLocations.add(mat.source_location)
+      }
+    })
+    setSelectedLocationsForMaterial(Array.from(initialLocations))
     setShowEditDialog(true)
   }
 
@@ -550,7 +590,24 @@ export default function DailyLogsTab({
     if (!selectedLog) return
     try {
       setDeleting(true)
-      const success = await deleteDailyLog(selectedLog.id)
+      // Restore materials used in the deleted log
+      let materialsToRestore: { id: string; quantity: number }[] = []
+      let materialsUsedParsed = selectedLog.materials_used
+      if (typeof materialsUsedParsed === "string") {
+        try {
+          materialsUsedParsed = JSON.parse(materialsUsedParsed)
+        } catch (e) {
+          materialsUsedParsed = []
+        }
+      }
+      if (Array.isArray(materialsUsedParsed)) {
+        materialsToRestore = materialsUsedParsed.map((material) => ({
+          id: material.material_id,
+          quantity: material.actual_quantity || material.quantity || 0, // Use actual_quantity if available, otherwise fallback
+        }))
+      }
+
+      const success = await deleteDailyLog(selectedLog.id, materialsToRestore) // Pass materials to restore
       if (!success) {
         toast({ title: "Error", description: "Failed to delete daily log.", variant: "destructive" })
         return
@@ -567,10 +624,11 @@ export default function DailyLogsTab({
       // setDailyLogs(dailyLogs.filter((log) => log.id !== selectedLog.id)) // Remove this line
       // Reload first page after deleting
       setCurrentPage(1)
-      const logs = await getDailyLogs(logsPerPage, 0)
-      const count = await getDailyLogsCount()
+      const logs = await getDailyLogs(logsPerPage, 0, { dateFilter, projectFilter }) // Pass filters
+      const count = await getDailyLogsCount({ dateFilter, projectFilter }) // Pass filters
       setDailyLogs(logs)
       setTotalLogs(count)
+      reloadMaterials() // Reload materials to reflect restored stock
 
       setShowDeleteDialog(false)
       setSelectedLog(null)
@@ -807,8 +865,8 @@ export default function DailyLogsTab({
 
       // setDailyLogs([...dailyLogs, newLog]) // This line was removed and replaced with pagination reload
       setCurrentPage(1)
-      const logs = await getDailyLogs(logsPerPage, 0)
-      const count = await getDailyLogsCount()
+      const logs = await getDailyLogs(logsPerPage, 0, { dateFilter, projectFilter }) // Pass filters
+      const count = await getDailyLogsCount({ dateFilter, projectFilter }) // Pass filters
       setDailyLogs(logs)
       setTotalLogs(count)
 
@@ -1398,7 +1456,7 @@ export default function DailyLogsTab({
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{filteredTotalLogs}</div>
+            <div className="text-2xl font-bold">{stats.totalLogs}</div>
             <p className="text-xs text-muted-foreground">{hasActiveFilters ? "In selected filters" : "All time"}</p>
           </CardContent>
         </Card>
@@ -1408,7 +1466,7 @@ export default function DailyLogsTab({
             <Calendar className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">{thisWeekLogs}</div>
+            <div className="text-2xl font-bold text-green-600">{stats.thisWeekCount}</div>
             <p className="text-xs text-muted-foreground">Last 7 days</p>
           </CardContent>
         </Card>
@@ -1418,7 +1476,7 @@ export default function DailyLogsTab({
             <Clock className="h-4 w-4 text-blue-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{thisMonthLogs}</div>
+            <div className="text-2xl font-bold text-blue-600">{stats.thisMonthCount}</div>
             <p className="text-xs text-muted-foreground">Last 30 days</p>
           </CardContent>
         </Card>
@@ -1428,7 +1486,7 @@ export default function DailyLogsTab({
             <MapPin className="h-4 w-4 text-purple-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-purple-600">{activeProjects}</div>
+            <div className="text-2xl font-bold text-purple-600">{stats.activeProjects}</div>
             <p className="text-xs text-muted-foreground">With logs in range</p>
           </CardContent>
         </Card>
@@ -2098,7 +2156,10 @@ export default function DailyLogsTab({
                   <Select
                     onValueChange={(materialId) => {
                       if (!formData.materials_used.some((m) => m.material_id === materialId)) {
-                        handleMaterialChange(materialId, 0, 0, "") // Pass empty string for sourceLocation initially
+                        // Find the material to get its default source location
+                        const material = materials.find(m => m.id === materialId);
+                        const sourceLocation = material ? (material.project_id || "storage") : "storage";
+                        handleMaterialChange(materialId, 0, 0, sourceLocation)
                       }
                     }}
                   >

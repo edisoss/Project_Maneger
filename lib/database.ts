@@ -1648,7 +1648,10 @@ export async function getMaterialTransfers(materialId?: string): Promise<Materia
   }
 }
 
-export async function getDailyLogsStats(): Promise<{
+export async function getDailyLogsStats(filters?: {
+  dateFilter?: { quickFilter?: string; fromDate?: string; toDate?: string }
+  projectFilter?: string
+}): Promise<{
   total: number
   thisWeek: number
   thisMonth: number
@@ -1659,27 +1662,52 @@ export async function getDailyLogsStats(): Promise<{
       return { total: 0, thisWeek: 0, thisMonth: 0 }
     }
 
-    // Get all logs to calculate statistics (not paginated)
+    // Get all logs (not paginated) to calculate statistics
     const { data: allLogs, error } = await supabase
       .from("daily_logs")
-      .select("date")
+      .select("date, project_id")
       .order("created_at", { ascending: false })
 
     if (error || !allLogs) {
       return { total: 0, thisWeek: 0, thisMonth: 0 }
     }
 
-    const total = allLogs.length
+    // Apply filters if provided
+    let filtered = allLogs
+
+    // Apply project filter
+    if (filters?.projectFilter && filters.projectFilter !== "all") {
+      filtered = filtered.filter((log) => log.project_id === filters.projectFilter)
+    }
+
+    // Apply date filter
+    if (filters?.dateFilter) {
+      const df = filters.dateFilter
+      filtered = filtered.filter((log) => {
+        const logDate = new Date(log.date)
+        const logDateStr = logDate.toISOString().split("T")[0]
+
+        if (df.fromDate && logDateStr < df.fromDate) {
+          return false
+        }
+        if (df.toDate && logDateStr > df.toDate) {
+          return false
+        }
+        return true
+      })
+    }
+
+    const total = filtered.length
     const now = new Date()
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
     const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
 
-    const thisWeek = allLogs.filter((log) => {
+    const thisWeek = filtered.filter((log) => {
       const logDate = new Date(log.date)
       return logDate >= weekAgo
     }).length
 
-    const thisMonth = allLogs.filter((log) => {
+    const thisMonth = filtered.filter((log) => {
       const logDate = new Date(log.date)
       return logDate >= monthAgo
     }).length
