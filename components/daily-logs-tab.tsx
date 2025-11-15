@@ -2431,6 +2431,7 @@ export default function DailyLogsTab({
           </AlertDialogContent>
         </AlertDialog>
       )}
+      </div>
     </TooltipProvider>
   )
 }
