@@ -54,6 +54,7 @@ import {
   getActivities,
   addActivity,
   verifyAndFixCreatorInfo,
+  getDailyLogsStats, // Imported new function
 } from "@/lib/database"
 import type {
   Project,
@@ -122,6 +123,11 @@ export default function DashboardContent({ user }: DashboardContentProps) {
   const [updatingUser, setUpdatingUser] = useState(false)
   const [deletingUser, setDeletingUser] = useState(false)
 
+  // State for stats loading
+  const [statsLoading, setStatsLoading] = useState(true)
+  const [logsStats, setLogsStats] = useState({ total: 0, thisWeek: 0, thisMonth: 0 })
+
+
   const { toast } = useToast()
   const router = useRouter()
 
@@ -129,6 +135,22 @@ export default function DashboardContent({ user }: DashboardContentProps) {
   useEffect(() => {
     loadAllData()
   }, [])
+
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        const stats = await getDailyLogsStats()
+        setLogsStats(stats)
+      } catch (error) {
+        setLogsStats({ total: 0, thisWeek: 0, thisMonth: 0 })
+      } finally {
+        setStatsLoading(false)
+      }
+    }
+
+    loadStats()
+  }, [])
+
 
   const loadAllData = async () => {
     try {
@@ -470,19 +492,20 @@ export default function DashboardContent({ user }: DashboardContentProps) {
   const activeWorkers = workers.filter((w) => w.status === "Active").length
   const totalMaterials = materials.length
   const lowStockMaterials = materials.filter((m) => m.current_stock <= m.min_stock).length
-  const thisWeekLogs = dailyLogs.filter((log) => {
-    const logDate = new Date(log.date)
-    const weekAgo = new Date()
-    weekAgo.setDate(weekAgo.getDate() - 7)
-    return logDate >= weekAgo
-  }).length
+  // Removed these as they're now fetched separately and stored in logsStats
+  // const thisWeekLogs = dailyLogs.filter((log) => {
+  //   const logDate = new Date(log.date)
+  //   const weekAgo = new Date()
+  //   weekAgo.setDate(weekAgo.getDate() - 7)
+  //   return logDate >= weekAgo
+  // }).length
 
-  const thisMonthLogs = dailyLogs.filter((log) => {
-    const logDate = new Date(log.date)
-    const monthAgo = new Date()
-    monthAgo.setMonth(monthAgo.getMonth() - 1)
-    return logDate >= monthAgo
-  }).length
+  // const thisMonthLogs = dailyLogs.filter((log) => {
+  //   const logDate = new Date(log.date)
+  //   const monthAgo = new Date()
+  //   monthAgo.setMonth(monthAgo.getMonth() - 1)
+  //   return logDate >= monthAgo
+  // }).length
 
   // Get user role for permission checks
   const userRole = userProfile?.role || "user"
@@ -714,8 +737,8 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-purple-900">{dailyLogs.length}</div>
-                  <p className="text-xs text-purple-600 mt-1">{thisWeekLogs} this week | {thisMonthLogs} this month</p>
+                  <div className="text-2xl font-bold text-purple-900">{logsStats.total}</div>
+                  <p className="text-xs text-purple-600 mt-1">{logsStats.thisWeek} this week | {logsStats.thisMonth} this month</p>
                 </CardContent>
               </Card>
             </div>

@@ -1647,3 +1647,45 @@ export async function getMaterialTransfers(materialId?: string): Promise<Materia
     return []
   }
 }
+
+export async function getDailyLogsStats(): Promise<{
+  total: number
+  thisWeek: number
+  thisMonth: number
+}> {
+  try {
+    const supabase = createClientClient()
+    if (!supabase) {
+      return { total: 0, thisWeek: 0, thisMonth: 0 }
+    }
+
+    // Get all logs to calculate statistics (not paginated)
+    const { data: allLogs, error } = await supabase
+      .from("daily_logs")
+      .select("date")
+      .order("created_at", { ascending: false })
+
+    if (error || !allLogs) {
+      return { total: 0, thisWeek: 0, thisMonth: 0 }
+    }
+
+    const total = allLogs.length
+    const now = new Date()
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+    const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+
+    const thisWeek = allLogs.filter((log) => {
+      const logDate = new Date(log.date)
+      return logDate >= weekAgo
+    }).length
+
+    const thisMonth = allLogs.filter((log) => {
+      const logDate = new Date(log.date)
+      return logDate >= monthAgo
+    }).length
+
+    return { total, thisWeek, thisMonth }
+  } catch (error) {
+    return { total: 0, thisWeek: 0, thisMonth: 0 }
+  }
+}
