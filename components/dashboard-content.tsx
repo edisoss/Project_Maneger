@@ -71,6 +71,7 @@ import {
   deleteProfile,
   getActivities,
   addActivity,
+  verifyAndFixCreatorInfo,
 } from "@/lib/database"
 import type {
   Project,
@@ -91,7 +92,7 @@ import type { User } from "@supabase/supabase-js"
 // Import tab components
 import ProjectsTab from "./projects-tab"
 import WorkersTab from "./workers-tab"
-import MaterialsTab from "./materials-tab"
+import MaterialsManagement from "./materials-management"
 import DailyLogsTab from "./daily-logs-tab"
 import RecentActivities from "./recent-activities"
 
@@ -114,6 +115,9 @@ export default function DashboardContent({ user }: DashboardContentProps) {
   const [loading, setLoading] = useState(true)
   const [isAdmin, setIsAdmin] = useState(false) // Default to false, check from profile
   const [userProfile, setUserProfile] = useState<Profile | null>(null)
+
+  // State for active tab management
+  const [activeTab, setActiveTab] = useState("overview")
 
   // User management states
   const [showAddUserDialog, setShowAddUserDialog] = useState(false)
@@ -149,6 +153,9 @@ export default function DashboardContent({ user }: DashboardContentProps) {
       setLoading(true)
       console.log("Loading all data...")
       console.log("Current user:", { id: user.id, email: user.email })
+
+      // Verify creator info for debugging
+      await verifyAndFixCreatorInfo()
 
       const [
         projectsData,
@@ -585,7 +592,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
 
       {/* Main Content */}
       <main className="p-6">
-        <Tabs defaultValue="overview" className="space-y-6">
+        <Tabs defaultValue="overview" className="space-y-6" value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-5 bg-white/60 backdrop-blur-sm border border-gray-200 rounded-xl p-1">
             <TabsTrigger
               value="overview"
@@ -659,7 +666,10 @@ export default function DashboardContent({ user }: DashboardContentProps) {
 
             {/* Statistics Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 hover:shadow-lg transition-all duration-200">
+              <Card
+                className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 hover:shadow-lg transition-all duration-200 cursor-pointer"
+                onClick={() => setActiveTab("projects")}
+              >
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium text-blue-700">Total Projects</CardTitle>
                   <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
@@ -672,7 +682,10 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                 </CardContent>
               </Card>
 
-              <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 hover:shadow-lg transition-all duration-200">
+              <Card
+                className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 hover:shadow-lg transition-all duration-200 cursor-pointer"
+                onClick={() => setActiveTab("workers")}
+              >
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium text-green-700">Team Members</CardTitle>
                   <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center">
@@ -685,7 +698,10 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                 </CardContent>
               </Card>
 
-              <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200 hover:shadow-lg transition-all duration-200">
+              <Card
+                className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200 hover:shadow-lg transition-all duration-200 cursor-pointer"
+                onClick={() => setActiveTab("materials")}
+              >
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium text-orange-700">Materials</CardTitle>
                   <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center">
@@ -698,7 +714,10 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                 </CardContent>
               </Card>
 
-              <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200 hover:shadow-lg transition-all duration-200">
+              <Card
+                className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200 hover:shadow-lg transition-all duration-200 cursor-pointer"
+                onClick={() => setActiveTab("daily-logs")}
+              >
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium text-purple-700">This Week</CardTitle>
                   <div className="w-8 h-8 bg-purple-500 rounded-lg flex items-center justify-center">
@@ -966,16 +985,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
           </TabsContent>
 
           <TabsContent value="materials">
-            <MaterialsTab
-              materials={materials}
-              setMaterials={setMaterials}
-              materialCategories={materialCategories}
-              setMaterialCategories={setMaterialCategories}
-              materialLocations={materialLocations}
-              setMaterialLocations={setMaterialLocations}
-              logActivity={logActivity}
-              isAdmin={isAdmin}
-            />
+            <MaterialsManagement />
           </TabsContent>
 
           <TabsContent value="daily-logs">

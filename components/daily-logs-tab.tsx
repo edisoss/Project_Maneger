@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -29,31 +29,15 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Plus, Edit, Trash2, FileText, Calendar, Users, Package, MapPin, Clock, Loader2, Eye, Filter, X, CheckCircle, AlertCircle, Pause, XCircle, Building, Info, Lock, Unlock, User, Building2, ChevronLeft, ChevronRight } from 'lucide-react'
 import {
-  Plus,
-  Edit,
-  Trash2,
-  FileText,
-  Calendar,
-  Users,
-  Package,
-  MapPin,
-  Clock,
-  Loader2,
-  Eye,
-  Filter,
-  X,
-  CheckCircle,
-  AlertCircle,
-  Pause,
-  XCircle,
-  Building,
-  Info,
-  Lock,
-  Unlock,
-  User,
-} from "lucide-react"
-import { addDailyLog, updateDailyLog, deleteDailyLog, updateMaterial } from "@/lib/database"
+  addDailyLog,
+  updateDailyLog,
+  deleteDailyLog,
+  updateMaterial,
+  getDailyLogs,
+  getDailyLogsCount,
+} from "@/lib/database"
 import type { DailyLog, Project, Worker, Material } from "@/lib/database"
 import { useToast } from "@/hooks/use-toast"
 import type { Activity } from "./recent-activities"
@@ -90,6 +74,10 @@ export default function DailyLogsTab({
   const [deleting, setDeleting] = useState(false)
   const { toast } = useToast()
 
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalLogs, setTotalLogs] = useState(0)
+  const logsPerPage = 20
+
   // Date filtering state
   const [dateFilter, setDateFilter] = useState({
     fromDate: "",
@@ -100,14 +88,32 @@ export default function DailyLogsTab({
   // Project filtering state
   const [projectFilter, setProjectFilter] = useState("all")
 
+  const [selectedLocationsForMaterial, setSelectedLocationsForMaterial] = useState<string[]>(["storage"])
+
+  useEffect(() => {
+    const loadPaginatedLogs = async () => {
+      const offset = (currentPage - 1) * logsPerPage
+      const logs = await getDailyLogs(logsPerPage, offset)
+      const count = await getDailyLogsCount()
+      setDailyLogs(logs)
+      setTotalLogs(count)
+    }
+    loadPaginatedLogs()
+  }, [currentPage, setDailyLogs])
+
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split("T")[0],
-    project_id: "",
+    project_id: projects[0]?.id || "",
     workers_present: [] as string[],
     work_description: "",
-    materials_used: [] as { material_id: string; actual_quantity: number; visible_quantity: number }[],
+    materials_used: [] as {
+      material_id: string
+      actual_quantity: number
+      visible_quantity: number
+      source_location: string // Add source location tracking: "storage" or project_id
+    }[], // </CHANGE>
     equipment_used: "",
-    weather_conditions: "",
+    weather_conditions: "Sunny",
     working_place: "",
     hours_worked: 8,
     status: "completed",
@@ -150,7 +156,7 @@ export default function DailyLogsTab({
         return { fromDate: todayStr, toDate: todayStr }
       case "week":
         const weekStart = new Date(today)
-        weekStart.setDate(today.getDate() - today.getDay()) // Start of week (Sunday)
+        weekStart.setDate(today.getDay()) // Start of week (Sunday)
         const weekEnd = new Date(weekStart)
         weekEnd.setDate(weekStart.getDate() + 6) // End of week (Saturday)
         return {
@@ -197,6 +203,7 @@ export default function DailyLogsTab({
       quickFilter: "all",
     })
     setProjectFilter("all")
+    setCurrentPage(1) // Reset to first page when filters are cleared
   }
 
   // Filter logs based on date range and project
@@ -227,6 +234,40 @@ export default function DailyLogsTab({
     return filtered
   }, [dailyLogs, dateFilter, projectFilter])
 
+  const availableMaterialsFromLocation = useMemo(() => {
+    const materialsFromSelectedLocations = materials.filter((m) => {
+      const materialLocation = m.project_id || "storage"
+      return (
+        selectedLocationsForMaterial.includes(materialLocation) &&
+        !formData.materials_used.some((used) => used.material_id === m.id)
+      )
+    })
+    return materialsFromSelectedLocations
+    // </CHANGE>
+  }, [materials, selectedLocationsForMaterial, formData.materials_used])
+  // </CHANGE>
+
+  const materialsByLocation = useMemo(() => {
+    const grouped = new Map<string, Material[]>()
+
+    // Add storage materials
+    const storageMaterials = materials.filter((m) => !m.project_id || m.project_id === null)
+    if (storageMaterials.length > 0) {
+      grouped.set("storage", storageMaterials)
+    }
+
+    // Add materials for each project
+    projects.forEach((project) => {
+      const projectMaterials = materials.filter((m) => m.project_id === project.id)
+      if (projectMaterials.length > 0) {
+        grouped.set(project.id, projectMaterials)
+      }
+    })
+
+    return grouped
+  }, [materials, projects])
+  // </CHANGE>
+
   const resetForm = () => {
     setFormData({
       date: new Date().toISOString().split("T")[0],
@@ -241,6 +282,8 @@ export default function DailyLogsTab({
       status: "completed",
       notes: "",
     })
+    setSelectedLocationsForMaterial(["storage"])
+    // </CHANGE>
   }
 
   const handleAddDailyLog = async () => {
@@ -313,7 +356,21 @@ export default function DailyLogsTab({
         variant: "default",
       })
 
-      setDailyLogs([...dailyLogs, newLog])
+      // setDailyLogs([...dailyLogs, newLog]) // Remove this line
+      setCurrentPage(1)
+      const logs = await getDailyLogs(logsPerPage, 0)
+      const count = await getDailyLogsCount()
+      setDailyLogs(logs)
+      setTotalLogs(count)
+
+      // logActivity({ // This logActivity call is duplicated, removed from here
+      //   type: "daily_log",
+      //   title: "Daily Log Created",
+      //   description: `New daily log created for ${new Date(formData.date).toLocaleDateString()} with status: ${statusConfig.label}.`,
+      //   icon: Plus,
+      //   variant: "default",
+      // })
+
       setShowAddDialog(false)
       resetForm()
       toast({ title: "Success", description: "Daily log added successfully!" })
@@ -326,39 +383,26 @@ export default function DailyLogsTab({
   }
 
   const handleEdit = (log: DailyLog) => {
-    console.log("Editing log:", log)
-    console.log("Available workers:", workers)
     setSelectedLog(log)
 
     // Parse workers_present - handle both array and JSON string formats
     let workersPresent: string[] = []
     try {
-      console.log("=== DEBUGGING WORKERS_PRESENT ===")
-      console.log("Raw workers_present:", log.workers_present, typeof log.workers_present)
-      console.log(
-        "Available workers:",
-        workers.map((w) => ({ id: w.id, name: w.name, idType: typeof w.id })),
-      )
+      
 
       if (Array.isArray(log.workers_present)) {
         // Convert all to strings for consistent comparison
         workersPresent = log.workers_present.map((id) => String(id))
-        console.log("Parsed as array:", workersPresent)
       } else if (typeof log.workers_present === "string") {
         const parsed = JSON.parse(log.workers_present || "[]")
         workersPresent = Array.isArray(parsed) ? parsed.map((id) => String(id)) : []
-        console.log("Parsed from JSON string:", workersPresent)
       }
 
       // Verify which workers should be selected
       const matchingWorkers = workers.filter(
         (worker) => workersPresent.includes(String(worker.id)) || workersPresent.includes(worker.id),
       )
-      console.log(
-        "Workers that should be selected:",
-        matchingWorkers.map((w) => ({ id: w.id, name: w.name })),
-      )
-      console.log("=== END DEBUGGING ===")
+      
     } catch (e) {
       console.error("Error parsing workers_present:", e)
       workersPresent = []
@@ -520,7 +564,14 @@ export default function DailyLogsTab({
         variant: "destructive",
       })
 
-      setDailyLogs(dailyLogs.filter((log) => log.id !== selectedLog.id))
+      // setDailyLogs(dailyLogs.filter((log) => log.id !== selectedLog.id)) // Remove this line
+      // Reload first page after deleting
+      setCurrentPage(1)
+      const logs = await getDailyLogs(logsPerPage, 0)
+      const count = await getDailyLogsCount()
+      setDailyLogs(logs)
+      setTotalLogs(count)
+
       setShowDeleteDialog(false)
       setSelectedLog(null)
       toast({ title: "Success", description: "Daily log deleted successfully!" })
@@ -534,7 +585,7 @@ export default function DailyLogsTab({
 
   const handleWorkerToggle = (workerId: string, checked: boolean) => {
     const workerIdStr = String(workerId)
-    console.log(`handleWorkerToggle called: ${workerIdStr} -> ${checked}`)
+  
 
     setFormData((prev) => {
       let newWorkersPresent: string[]
@@ -551,7 +602,7 @@ export default function DailyLogsTab({
         newWorkersPresent = prev.workers_present.filter((id) => String(id) !== workerIdStr)
       }
 
-      console.log("Updated workers_present:", newWorkersPresent)
+    
       return {
         ...prev,
         workers_present: newWorkersPresent,
@@ -559,7 +610,13 @@ export default function DailyLogsTab({
     })
   }
 
-  const handleMaterialChange = (materialId: string, actualQuantity: number, visibleQuantity: number) => {
+  const handleMaterialChange = (
+    materialId: string,
+    actualQuantity: number,
+    visibleQuantity: number,
+    sourceLocation: string, // Add source location parameter
+  ) => {
+    // </CHANGE>
     setFormData((prev) => {
       const existingIndex = prev.materials_used.findIndex((m) => m.material_id === materialId)
 
@@ -570,7 +627,8 @@ export default function DailyLogsTab({
           ...updatedMaterials[existingIndex],
           actual_quantity: actualQuantity,
           visible_quantity: visibleQuantity,
-        }
+          source_location: sourceLocation, // Update source location
+        } // </CHANGE>
         return { ...prev, materials_used: updatedMaterials }
       } else {
         // Add new material
@@ -578,7 +636,12 @@ export default function DailyLogsTab({
           ...prev,
           materials_used: [
             ...prev.materials_used,
-            { material_id: materialId, actual_quantity: actualQuantity, visible_quantity: visibleQuantity },
+            {
+              material_id: materialId,
+              actual_quantity: actualQuantity,
+              visible_quantity: visibleQuantity,
+              source_location: sourceLocation, // Store source location
+            }, // </CHANGE>
           ],
         }
       }
@@ -596,22 +659,24 @@ export default function DailyLogsTab({
     return projects.find((p) => p.id === projectId)?.name || "Unknown Project"
   }
 
+  const getLocationName = (locationId: string) => {
+    if (locationId === "storage") return "Central Storage"
+    return getProjectName(locationId)
+  }
+  // </CHANGE>
+
   const getWorkerName = (workerId: string | number) => {
     // Convert to string for comparison and try both string and number matching
     const workerIdStr = String(workerId)
     const workerIdNum = Number(workerId)
 
-    console.log("Looking for worker:", workerId, "as string:", workerIdStr, "as number:", workerIdNum)
-    console.log(
-      "Available workers:",
-      workers.map((w) => ({ id: w.id, name: w.name, idType: typeof w.id })),
-    )
+    
 
     const worker = workers.find(
       (w) => w.id === workerIdStr || w.id === String(workerIdNum) || String(w.id) === workerIdStr,
     )
 
-    console.log("Found worker:", worker)
+    
     return worker?.name || `Unknown Worker (ID: ${workerId})`
   }
 
@@ -624,7 +689,7 @@ export default function DailyLogsTab({
   }
 
   // Calculate statistics based on filtered logs
-  const totalLogs = filteredLogs.length
+  const filteredTotalLogs = filteredLogs.length // Renamed to avoid conflict with totalLogs state
   const thisWeekLogs = filteredLogs.filter((log) => {
     const logDate = new Date(log.date)
     const weekAgo = new Date()
@@ -649,8 +714,118 @@ export default function DailyLogsTab({
   const hasActiveFilters =
     dateFilter.quickFilter !== "all" || dateFilter.fromDate || dateFilter.toDate || projectFilter !== "all"
 
+  const handleLocationToggle = (locationId: string, checked: boolean) => {
+    setSelectedLocationsForMaterial((prev) => {
+      if (checked) {
+        return [...prev, locationId]
+      } else {
+        const newLocations = prev.filter((id) => id !== locationId)
+        return newLocations.length > 0 ? newLocations : ["storage"] // Always keep at least one
+      }
+    })
+  }
+  // </CHANGE>
+
+  const totalPages = Math.ceil(totalLogs / logsPerPage)
+
+  // Function to handle page changes
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page)
+    // The useEffect hook will automatically fetch logs for the new page
+  }
+
+  const handleAddLog = async () => {
+    // Renamed from handleAddDailyLog for clarity
+    if (!canAddDailyLogs) {
+      toast({
+        title: "Access Denied",
+        description: "Only administrators and managers can add daily logs",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      setSaving(true)
+      if (!formData.date || !formData.project_id || !formData.work_description) {
+        toast({ title: "Error", description: "Please fill in all required fields", variant: "destructive" })
+        return
+      }
+
+      const equipmentArray = toStringArray(formData.equipment_used)
+
+      const logData = {
+        title: `Daily Log - ${new Date(formData.date).toLocaleDateString()}`,
+        date: formData.date,
+        project_id: formData.project_id,
+        weather: formData.weather_conditions,
+        temperature: 20, // default
+        workers_present: formData.workers_present,
+        materials_used: formData.materials_used,
+        equipment_used: equipmentArray,
+        hours_worked: formData.hours_worked,
+        work_completed: formData.work_description,
+        status: formData.status,
+        working_place: formData.working_place,
+      }
+
+      const newLog = await addDailyLog(logData)
+      if (!newLog) {
+        toast({ title: "Error", description: "Failed to add daily log.", variant: "destructive" })
+        return
+      }
+
+      // Update material stock for used materials using actual quantities
+      for (const materialUsed of formData.materials_used) {
+        const material = materials.find((m) => m.id === materialUsed.material_id)
+        if (material && materialUsed.actual_quantity > 0) {
+          const newStock = Math.max(0, material.current_stock - materialUsed.actual_quantity)
+          await updateMaterial(material.id, { current_stock: newStock })
+
+          // Log material usage activity with both quantities
+          logActivity({
+            type: "material",
+            title: "Material Used",
+            description: `${materialUsed.actual_quantity} ${material.unit} of ${material.name} used in daily log (Visible: ${materialUsed.visible_quantity} ${material.unit}). Remaining: ${newStock} ${material.unit}`,
+            icon: Package,
+            variant: newStock <= material.min_stock ? "destructive" : "secondary",
+          })
+        }
+      }
+
+      // Reload materials to reflect updated stock
+      reloadMaterials()
+
+      const statusConfig = getStatusConfig(formData.status)
+      logActivity({
+        type: "daily_log",
+        title: "Daily Log Created",
+        description: `New daily log created for ${new Date(formData.date).toLocaleDateString()} with status: ${statusConfig.label}.`,
+        icon: Plus,
+        variant: "default",
+      })
+
+      // setDailyLogs([...dailyLogs, newLog]) // This line was removed and replaced with pagination reload
+      setCurrentPage(1)
+      const logs = await getDailyLogs(logsPerPage, 0)
+      const count = await getDailyLogsCount()
+      setDailyLogs(logs)
+      setTotalLogs(count)
+
+      setShowAddDialog(false)
+      resetForm()
+      toast({ title: "Success", description: "Daily log added successfully!" })
+    } catch (error) {
+      console.error("Error adding daily log:", error)
+      toast({ title: "Error", description: "Error adding daily log.", variant: "destructive" })
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold">Daily Logs Management</h2>
@@ -679,6 +854,11 @@ export default function DailyLogsTab({
                 <DialogDescription>Record daily work progress and material usage with dual tracking</DialogDescription>
               </DialogHeader>
               <div className="space-y-6">
+                {/* </CHANGE> */}
+                {/* Remove single location selector, materials now tracked with their source location */}
+                {/* </CHANGE> */}
+                {/* </CHANGE> */}
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="date">Date *</Label>
@@ -802,11 +982,7 @@ export default function DailyLogsTab({
                         .filter((worker) => worker.status === "Active")
                         .map((worker) => {
                           const isChecked = formData.workers_present.includes(String(worker.id))
-                          console.log(`Add Dialog - Worker ${worker.name} (ID: ${worker.id}):`, {
-                            isChecked,
-                            formWorkersPresent: formData.workers_present,
-                            workerIdAsString: String(worker.id),
-                          })
+                          
 
                           return (
                             <div key={worker.id} className="flex items-center space-x-2">
@@ -814,7 +990,7 @@ export default function DailyLogsTab({
                                 id={`worker-${worker.id}`}
                                 checked={isChecked}
                                 onCheckedChange={(checked) => {
-                                  console.log(`Add Dialog - Toggling worker ${worker.name} (${worker.id}): ${checked}`)
+              
                                   handleWorkerToggle(String(worker.id), checked as boolean)
                                 }}
                               />
@@ -838,7 +1014,7 @@ export default function DailyLogsTab({
                     <Label>Materials Used</Label>
                     <div className="flex items-center gap-1 text-xs text-gray-500 bg-blue-50 px-2 py-1 rounded">
                       <Info className="h-3 w-3" />
-                      Dual tracking: Actual usage affects inventory, Visible usage shown to non-admins
+                      Select locations first, then choose materials from those locations
                     </div>
                   </div>
                   <div className="space-y-3">
@@ -847,7 +1023,13 @@ export default function DailyLogsTab({
                       return (
                         <div key={index} className="p-4 border rounded-lg bg-gray-50">
                           <div className="flex items-center justify-between mb-3">
-                            <span className="font-medium">{getMaterialName(materialUsed.material_id)}</span>
+                            <div className="flex flex-col">
+                              <span className="font-medium">{getMaterialName(materialUsed.material_id)}</span>
+                              <span className="text-xs text-gray-500 flex items-center gap-1 mt-1">
+                                <MapPin className="h-3 w-3" />
+                                From: {getLocationName(materialUsed.source_location)}
+                              </span>
+                            </div>
                             <Button
                               variant="ghost"
                               size="sm"
@@ -878,6 +1060,7 @@ export default function DailyLogsTab({
                                       materialUsed.material_id,
                                       Number.parseFloat(e.target.value) || 0,
                                       materialUsed.visible_quantity,
+                                      materialUsed.source_location,
                                     )
                                   }
                                   className="flex-1"
@@ -908,6 +1091,7 @@ export default function DailyLogsTab({
                                       materialUsed.material_id,
                                       materialUsed.actual_quantity,
                                       Number.parseFloat(e.target.value) || 0,
+                                      materialUsed.source_location,
                                     )
                                   }
                                   className="flex-1"
@@ -922,27 +1106,120 @@ export default function DailyLogsTab({
                         </div>
                       )
                     })}
-                    <Select
-                      onValueChange={(materialId) => {
-                        if (!formData.materials_used.some((m) => m.material_id === materialId)) {
-                          handleMaterialChange(materialId, 0, 0)
-                        }
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Add material" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {materials
-                          .filter((material) => !formData.materials_used.some((m) => m.material_id === material.id))
-                          .map((material) => (
-                            <SelectItem key={material.id} value={material.id}>
-                              {material.name} ({material.current_stock} {material.unit} available)
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
+
+                    <div className="border rounded-lg p-4 bg-blue-50 space-y-4">
+                      <div>
+                        <Label className="text-sm font-medium mb-3 block flex items-center gap-2">
+                          <Building2 className="h-4 w-4" />
+                          1. Select Locations to Pull Materials From
+                        </Label>
+                        <ScrollArea className="h-48 border rounded-md p-3 bg-white">
+                          <div className="space-y-2">
+                            {/* Storage option */}
+                            <div className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded">
+                              <Checkbox
+                                id="location-storage"
+                                checked={selectedLocationsForMaterial.includes("storage")}
+                                onCheckedChange={(checked) => handleLocationToggle("storage", checked as boolean)}
+                              />
+                              <Label
+                                htmlFor="location-storage"
+                                className="flex items-center gap-2 cursor-pointer flex-1"
+                              >
+                                <Package className="h-4 w-4 text-blue-600" />
+                                <span className="font-medium">Central Storage</span>
+                                <span className="text-xs text-gray-500 ml-auto">
+                                  ({materials.filter((m) => !m.project_id).length} materials)
+                                </span>
+                              </Label>
+                            </div>
+
+                            {/* Project options */}
+                            {projects.map((project) => {
+                              const projectMaterialCount = materials.filter((m) => m.project_id === project.id).length
+                              return (
+                                <div
+                                  key={project.id}
+                                  className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded"
+                                >
+                                  <Checkbox
+                                    id={`location-${project.id}`}
+                                    checked={selectedLocationsForMaterial.includes(project.id)}
+                                    onCheckedChange={(checked) => handleLocationToggle(project.id, checked as boolean)}
+                                  />
+                                  <Label
+                                    htmlFor={`location-${project.id}`}
+                                    className="flex items-center gap-2 cursor-pointer flex-1"
+                                  >
+                                    <Building2 className="h-4 w-4 text-green-600" />
+                                    <span className="font-medium">{project.name}</span>
+                                    <span className="text-xs text-gray-500 ml-auto">
+                                      ({projectMaterialCount} materials)
+                                    </span>
+                                  </Label>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </ScrollArea>
+                        <div className="text-xs text-gray-600 mt-2 flex items-center gap-1">
+                          <CheckCircle className="h-3 w-3" />
+                          {selectedLocationsForMaterial.length} location(s) selected
+                        </div>
+                      </div>
+
+                      <div>
+                        <Label className="text-sm font-medium mb-2 block">
+                          2. Select Material from Selected Locations
+                        </Label>
+                        {availableMaterialsFromLocation.length > 0 ? (
+                          <Select
+                            onValueChange={(materialId) => {
+                              const material = materials.find((m) => m.id === materialId)
+                              if (material && !formData.materials_used.some((m) => m.material_id === materialId)) {
+                                const sourceLocation = material.project_id || "storage"
+                                handleMaterialChange(materialId, 0, 0, sourceLocation)
+                              }
+                            }}
+                          >
+                            <SelectTrigger className="bg-white">
+                              <SelectValue
+                                placeholder={`Select material (${availableMaterialsFromLocation.length} available)`}
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableMaterialsFromLocation.map((material) => {
+                                const locationName = material.project_id
+                                  ? getProjectName(material.project_id)
+                                  : "Central Storage"
+                                return (
+                                  <SelectItem key={material.id} value={material.id}>
+                                    <div className="flex items-center gap-2">
+                                      <span>{material.name}</span>
+                                      <span className="text-xs text-gray-500">
+                                        ({material.current_stock} {material.unit})
+                                      </span>
+                                      <Badge variant="outline" className="text-xs">
+                                        {locationName}
+                                      </Badge>
+                                    </div>
+                                  </SelectItem>
+                                )
+                              })}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <p className="text-sm text-gray-500 bg-white p-3 rounded border">
+                            {selectedLocationsForMaterial.length === 0
+                              ? "Please select at least one location above"
+                              : "No materials available in selected locations"}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    {/* </CHANGE> */}
                   </div>
+                  {/* </CHANGE> */}
                 </div>
 
                 <div>
@@ -1086,7 +1363,7 @@ export default function DailyLogsTab({
               <div className="text-sm text-gray-600">
                 {hasActiveFilters ? (
                   <>
-                    Showing {filteredLogs.length} of {dailyLogs.length} logs
+                    Showing {filteredLogs.length} of {totalLogs} logs
                     {dateFilter.fromDate && dateFilter.toDate && (
                       <span className="ml-2">
                         from {new Date(dateFilter.fromDate).toLocaleDateString()} to{" "}
@@ -1098,7 +1375,7 @@ export default function DailyLogsTab({
                     )}
                   </>
                 ) : (
-                  `Showing all ${dailyLogs.length} logs`
+                  `Showing all ${totalLogs} logs`
                 )}
               </div>
 
@@ -1121,7 +1398,7 @@ export default function DailyLogsTab({
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalLogs}</div>
+            <div className="text-2xl font-bold">{filteredTotalLogs}</div>
             <p className="text-xs text-muted-foreground">{hasActiveFilters ? "In selected filters" : "All time"}</p>
           </CardContent>
         </Card>
@@ -1193,9 +1470,12 @@ export default function DailyLogsTab({
                 : "View daily work progress and material usage"}
             {filteredLogs.length !== dailyLogs.length && (
               <span className="ml-2 text-blue-600">
-                (Showing {filteredLogs.length} of {dailyLogs.length} logs)
+                (Showing {filteredLogs.length} of {totalLogs} logs)
               </span>
             )}
+            <span className="ml-2 text-gray-500">
+              (Page {currentPage} of {totalPages}, Total: {totalLogs} logs)
+            </span>
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -1332,6 +1612,57 @@ export default function DailyLogsTab({
               </p>
             </div>
           )}
+          <div className="flex items-center justify-between mt-4">
+            <div className="text-sm text-gray-500">
+              Showing {Math.min((currentPage - 1) * logsPerPage + 1, totalLogs)} to{" "}
+              {Math.min(currentPage * logsPerPage, totalLogs)} of {totalLogs} logs
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+              >
+                <ChevronLeft className="h-4 w-4 mr-1" />
+                Previous
+              </Button>
+              <div className="flex items-center gap-2">
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum
+                  if (totalPages <= 5) {
+                    pageNum = i + 1
+                  } else if (currentPage <= 3) {
+                    pageNum = i + 1
+                  } else if (currentPage >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i
+                  } else {
+                    pageNum = currentPage - 2 + i
+                  }
+
+                  return (
+                    <Button
+                      key={pageNum}
+                      variant={currentPage === pageNum ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setCurrentPage(pageNum)}
+                    >
+                      {pageNum}
+                    </Button>
+                  )
+                })}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+              >
+                Next
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -1602,7 +1933,9 @@ export default function DailyLogsTab({
                     max="24"
                     step="0.5"
                     value={formData.hours_worked}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, hours_worked: Number(e.target.value) || 0 }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, hours_worked: Number.parseFloat(e.target.value) || 0 }))
+                    }
                   />
                 </div>
                 <div>
@@ -1652,11 +1985,7 @@ export default function DailyLogsTab({
                           formData.workers_present.includes(worker.id) ||
                           formData.workers_present.some((id) => String(id) === String(worker.id))
 
-                        console.log(`Worker ${worker.name} (ID: ${worker.id}, type: ${typeof worker.id}):`, {
-                          isChecked,
-                          formWorkersPresent: formData.workers_present,
-                          workerIdAsString: String(worker.id),
-                        })
+                      
 
                         return (
                           <div key={worker.id} className="flex items-center space-x-2">
@@ -1664,7 +1993,7 @@ export default function DailyLogsTab({
                               id={`edit-worker-${worker.id}`}
                               checked={isChecked}
                               onCheckedChange={(checked) => {
-                                console.log(`Toggling worker ${worker.name} (${worker.id}): ${checked}`)
+                                
                                 handleWorkerToggle(String(worker.id), checked as boolean)
                               }}
                             />
@@ -1713,14 +2042,15 @@ export default function DailyLogsTab({
                             <Input
                               id={`edit-material-actual-${materialUsed.material_id}`}
                               type="number"
-                              min="0"
                               step="0.1"
+                              placeholder="Actual qty"
                               value={materialUsed.actual_quantity}
                               onChange={(e) =>
                                 handleMaterialChange(
                                   materialUsed.material_id,
                                   Number.parseFloat(e.target.value) || 0,
                                   materialUsed.visible_quantity,
+                                  materialUsed.source_location,
                                 )
                               }
                               className="flex-1"
@@ -1743,14 +2073,15 @@ export default function DailyLogsTab({
                             <Input
                               id={`edit-material-visible-${materialUsed.material_id}`}
                               type="number"
-                              min="0"
                               step="0.1"
+                              placeholder="Visible qty"
                               value={materialUsed.visible_quantity}
                               onChange={(e) =>
                                 handleMaterialChange(
                                   materialUsed.material_id,
                                   materialUsed.actual_quantity,
                                   Number.parseFloat(e.target.value) || 0,
+                                  materialUsed.source_location,
                                 )
                               }
                               className="flex-1"
@@ -1767,7 +2098,7 @@ export default function DailyLogsTab({
                   <Select
                     onValueChange={(materialId) => {
                       if (!formData.materials_used.some((m) => m.material_id === materialId)) {
-                        handleMaterialChange(materialId, 0, 0)
+                        handleMaterialChange(materialId, 0, 0, "") // Pass empty string for sourceLocation initially
                       }
                     }}
                   >
@@ -1826,20 +2157,19 @@ export default function DailyLogsTab({
               <AlertDialogDescription>
                 This will permanently delete the daily log for{" "}
                 {selectedLog && new Date(selectedLog.date).toLocaleDateString()} and all its data. This action cannot be
-                undone.
+                undone and will restore any materials used back to inventory.
               </AlertDialogDescription>
             </AlertDialogHeader>
-
             <AlertDialogFooter>
               <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={confirmDelete} disabled={deleting}>
+              <AlertDialogAction onClick={confirmDelete} disabled={deleting} className="bg-red-600 hover:bg-red-700">
                 {deleting ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     Deleting…
                   </>
                 ) : (
-                  "Delete"
+                  "Delete Log"
                 )}
               </AlertDialogAction>
             </AlertDialogFooter>
