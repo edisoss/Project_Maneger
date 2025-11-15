@@ -136,10 +136,7 @@ export default function DailyLogsTab({
   useEffect(() => {
     const loadStats = async () => {
       try {
-        const statsData = await getDailyLogsStats({
-          dateFilter,
-          projectFilter,
-        })
+        const statsData = await getDailyLogsStats()
         if (statsData) {
           setStats(statsData)
         }
@@ -406,20 +403,11 @@ export default function DailyLogsTab({
         variant: "default",
       })
 
-      // setDailyLogs([...dailyLogs, newLog]) // Remove this line
       setCurrentPage(1)
-      const logs = await getDailyLogs(logsPerPage, 0, { dateFilter, projectFilter }) // Pass filters
-      const count = await getDailyLogsCount({ dateFilter, projectFilter }) // Pass filters
+      const logs = await getDailyLogs(logsPerPage, 0)
+      const count = await getDailyLogsCount()
       setDailyLogs(logs)
       setTotalLogs(count)
-
-      // logActivity({ // This logActivity call is duplicated, removed from here
-      //   type: "daily_log",
-      //   title: "Daily Log Created",
-      //   description: `New daily log created for ${new Date(formData.date).toLocaleDateString()} with status: ${statusConfig.label}.`,
-      //   icon: Plus,
-      //   variant: "default",
-      // })
 
       setShowAddDialog(false)
       resetForm()
@@ -438,8 +426,6 @@ export default function DailyLogsTab({
     // Parse workers_present - handle both array and JSON string formats
     let workersPresent: string[] = []
     try {
-      
-
       if (Array.isArray(log.workers_present)) {
         // Convert all to strings for consistent comparison
         workersPresent = log.workers_present.map((id) => String(id))
@@ -641,11 +627,9 @@ export default function DailyLogsTab({
         variant: "destructive",
       })
 
-      // setDailyLogs(dailyLogs.filter((log) => log.id !== selectedLog.id)) // Remove this line
-      // Reload first page after deleting
       setCurrentPage(1)
-      const logs = await getDailyLogs(logsPerPage, 0, { dateFilter, projectFilter }) // Pass filters
-      const count = await getDailyLogsCount({ dateFilter, projectFilter }) // Pass filters
+      const logs = await getDailyLogs(logsPerPage, 0)
+      const count = await getDailyLogsCount()
       setDailyLogs(logs)
       setTotalLogs(count)
       reloadMaterials() // Reload materials to reflect restored stock
@@ -883,7 +867,20 @@ export default function DailyLogsTab({
         variant: "default",
       })
 
-      // setDailyLogs([...dailyLogs, newLog]) // This line was removed and replaced with pagination reload
       setCurrentPage(1)
-      const logs = await getDailyLogs(logsPerPage, 0, { dateFilter, projectFilter }) // Pass filters
-      const count = await getDailyLogsCount({ dateFilter, projectFilter }) // Pass filters
+      const logs = await getDailyLogs(logsPerPage, 0)
+      const count = await getDailyLogsCount()
+      setDailyLogs(logs)
+      setTotalLogs(count)
+
+      setShowAddDialog(false)
+      resetForm()
+      toast({ title: "Success", description: "Daily log added successfully!" })
+    } catch (error) {
+      console.error("Error adding daily log:", error)
+      toast({ title: "Error", description: "Error adding daily log.", variant: "destructive" })
+    } finally {
+      setSaving(false)
+    }
+  }
+}
