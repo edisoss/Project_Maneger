@@ -37,17 +37,11 @@ import {
   updateMaterial,
   getDailyLogs,
   getDailyLogsCount,
-  getDailyLogsStats, // Import getDailyLogsStats
+  getDailyLogsStats,
 } from "@/lib/database"
 import type { DailyLog, Project, Worker, Material } from "@/lib/database"
 import { useToast } from "@/hooks/use-toast"
 import type { Activity } from "./recent-activities"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
 
 interface DailyLogsTabProps {
   dailyLogs: DailyLog[]
@@ -58,7 +52,7 @@ interface DailyLogsTabProps {
   reloadMaterials: () => void
   logActivity: (activity: Omit<Activity, "id" | "timestamp">) => void
   isAdmin: boolean
-  userRole?: string // Add user role prop
+  userRole?: string
 }
 
 export default function DailyLogsTab({
@@ -70,7 +64,7 @@ export default function DailyLogsTab({
   reloadMaterials,
   logActivity,
   isAdmin,
-  userRole = "user", // Default to user role
+  userRole = "user",
 }: DailyLogsTabProps) {
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [showEditDialog, setShowEditDialog] = useState(false)
@@ -136,7 +130,10 @@ export default function DailyLogsTab({
   useEffect(() => {
     const loadStats = async () => {
       try {
-        const statsData = await getDailyLogsStats()
+        const statsData = await getDailyLogsStats({
+          dateFilter,
+          projectFilter,
+        })
         if (statsData) {
           setStats(statsData)
         }
@@ -403,11 +400,20 @@ export default function DailyLogsTab({
         variant: "default",
       })
 
+      // setDailyLogs([...dailyLogs, newLog]) // Remove this line
       setCurrentPage(1)
-      const logs = await getDailyLogs(logsPerPage, 0)
-      const count = await getDailyLogsCount()
+      const logs = await getDailyLogs(logsPerPage, 0, { dateFilter, projectFilter }) // Pass filters
+      const count = await getDailyLogsCount({ dateFilter, projectFilter }) // Pass filters
       setDailyLogs(logs)
       setTotalLogs(count)
+
+      // logActivity({ // This logActivity call is duplicated, removed from here
+      //   type: "daily_log",
+      //   title: "Daily Log Created",
+      //   description: `New daily log created for ${new Date(formData.date).toLocaleDateString()} with status: ${statusConfig.label}.`,
+      //   icon: Plus,
+      //   variant: "default",
+      // })
 
       setShowAddDialog(false)
       resetForm()
@@ -627,9 +633,11 @@ export default function DailyLogsTab({
         variant: "destructive",
       })
 
+      // setDailyLogs(dailyLogs.filter((log) => log.id !== selectedLog.id)) // Remove this line
+      // Reload first page after deleting
       setCurrentPage(1)
-      const logs = await getDailyLogs(logsPerPage, 0)
-      const count = await getDailyLogsCount()
+      const logs = await getDailyLogs(logsPerPage, 0, { dateFilter, projectFilter }) // Pass filters
+      const count = await getDailyLogsCount({ dateFilter, projectFilter }) // Pass filters
       setDailyLogs(logs)
       setTotalLogs(count)
       reloadMaterials() // Reload materials to reflect restored stock
@@ -867,15 +875,12 @@ export default function DailyLogsTab({
         variant: "default",
       })
 
+      // setDailyLogs([...dailyLogs, newLog]) // This line was removed and replaced with pagination reload
       setCurrentPage(1)
-      const logs = await getDailyLogs(logsPerPage, 0)
-      const count = await getDailyLogsCount()
+      const logs = await getDailyLogs(logsPerPage, 0, { dateFilter, projectFilter }) // Pass filters
+      const count = await getDailyLogsCount({ dateFilter, projectFilter }) // Pass filters
       setDailyLogs(logs)
       setTotalLogs(count)
-
-      setShowAddDialog(false)
-      resetForm()
-      toast({ title: "Success", description: "Daily log added successfully!" })
     } catch (error) {
       console.error("Error adding daily log:", error)
       toast({ title: "Error", description: "Error adding daily log.", variant: "destructive" })
@@ -883,4 +888,20 @@ export default function DailyLogsTab({
       setSaving(false)
     }
   }
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Daily Work Logs</CardTitle>
+          <CardDescription>
+            Track daily work progress and material usage with dual tracking (Page {currentPage} of {totalPages}, Total: {totalLogs} logs)
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p>Daily logs feature is currently being updated. Please check back soon.</p>
+        </CardContent>
+      </Card>
+    </div>
+  )
 }
