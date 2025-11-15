@@ -477,6 +477,13 @@ export default function DashboardContent({ user }: DashboardContentProps) {
     return logDate >= weekAgo
   }).length
 
+  const thisMonthLogs = dailyLogs.filter((log) => {
+    const logDate = new Date(log.date)
+    const monthAgo = new Date()
+    monthAgo.setMonth(monthAgo.getMonth() - 1)
+    return logDate >= monthAgo
+  }).length
+
   // Get user role for permission checks
   const userRole = userProfile?.role || "user"
   const canAddDailyLogs = isAdmin || userRole === "manager"
@@ -708,7 +715,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-purple-900">{dailyLogs.length}</div>
-                  <p className="text-xs text-purple-600 mt-1">{thisWeekLogs} this week</p>
+                  <p className="text-xs text-purple-600 mt-1">{thisWeekLogs} this week | {thisMonthLogs} this month</p>
                 </CardContent>
               </Card>
             </div>
@@ -746,7 +753,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                   <CardContent className="space-y-4">
                     <div className="flex items-center justify-between p-3 bg-gradient-to-r from-amber-50 to-yellow-50 rounded-lg border border-amber-200">
                       <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center">
+                        <div className="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center">
                           <Crown className="h-4 w-4 text-white" />
                         </div>
                         <div>
