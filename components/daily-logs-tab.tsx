@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   Dialog,
   DialogContent,
@@ -1621,29 +1622,99 @@ export default function DailyLogsTab({
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center">
-                          <Users className="h-4 w-4 mr-2 text-gray-400" />
-                          <span className="text-sm">{workersPresent.length} workers</span>
-                        </div>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className="flex items-center cursor-help">
+                                <Users className="h-4 w-4 mr-2 text-gray-400" />
+                                <span className="text-sm">{workersPresent.length} workers</span>
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              <div className="space-y-1">
+                                <p className="font-semibold text-sm mb-2">Workers Present:</p>
+                                {workersPresent.length > 0 ? (
+                                  workersPresent.map((workerId: string, idx: number) => {
+                                    const worker = workers.find((w) => w.id === workerId)
+                                    return (
+                                      <div key={idx} className="text-sm flex items-center gap-2">
+                                        <User className="h-3 w-3" />
+                                        {worker?.name || "Unknown Worker"}
+                                      </div>
+                                    )
+                                  })
+                                ) : (
+                                  <p className="text-sm text-gray-500">No workers assigned</p>
+                                )}
+                              </div>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary">{log.weather_conditions || log.weather || "N/A"}</Badge>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Package className="h-4 w-4 mr-2 text-gray-400" />
-                          <span className="text-sm">
-                            {Array.isArray(materialsUsed) ? materialsUsed.length : 0} items
-                          </span>
-                          {isAdmin &&
-                            Array.isArray(materialsUsed) &&
-                            materialsUsed.some((m) => m.actual_quantity !== m.visible_quantity) && (
-                              <div className="flex items-center gap-1 text-xs text-blue-600">
-                                <Lock className="h-3 w-3" />
-                                <span>Dual</span>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className="flex items-center gap-1 cursor-help">
+                                <Package className="h-4 w-4 mr-2 text-gray-400" />
+                                <span className="text-sm">
+                                  {Array.isArray(materialsUsed) ? materialsUsed.length : 0} items
+                                </span>
+                                {isAdmin &&
+                                  Array.isArray(materialsUsed) &&
+                                  materialsUsed.some((m) => m.actual_quantity !== m.visible_quantity) && (
+                                    <div className="flex items-center gap-1 text-xs text-blue-600">
+                                      <Lock className="h-3 w-3" />
+                                      <span>Dual</span>
+                                    </div>
+                                  )}
                               </div>
-                            )}
-                        </div>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-md">
+                              <div className="space-y-2">
+                                <p className="font-semibold text-sm mb-2">Materials Used:</p>
+                                {Array.isArray(materialsUsed) && materialsUsed.length > 0 ? (
+                                  materialsUsed.map((material: any, idx: number) => (
+                                    <div key={idx} className="text-sm border-b pb-2 last:border-0">
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div className="flex-1">
+                                          <div className="font-medium">{getMaterialName(material.material_id)}</div>
+                                          <div className="text-gray-500 text-xs mt-1">
+                                            {isAdmin && material.actual_quantity !== material.visible_quantity ? (
+                                              <div className="space-y-1">
+                                                <div className="flex items-center gap-1">
+                                                  <Unlock className="h-3 w-3" />
+                                                  Visible: {material.visible_quantity} {getMaterialUnit(material.material_id)}
+                                                </div>
+                                                <div className="flex items-center gap-1 text-blue-600">
+                                                  <Lock className="h-3 w-3" />
+                                                  Actual: {material.actual_quantity} {getMaterialUnit(material.material_id)}
+                                                </div>
+                                              </div>
+                                            ) : (
+                                              <span>Quantity: {material.visible_quantity || material.quantity} {getMaterialUnit(material.material_id)}</span>
+                                            )}
+                                          </div>
+                                          {material.source_location && (
+                                            <div className="flex items-center gap-1 text-xs text-gray-400 mt-1">
+                                              <MapPin className="h-3 w-3" />
+                                              <span>From: {getLocationName(material.source_location)}</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <p className="text-sm text-gray-500">No materials used</p>
+                                )}
+                              </div>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
