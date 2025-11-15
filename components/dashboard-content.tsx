@@ -36,25 +36,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import {
-  Building2,
-  Users,
-  Package,
-  FileText,
-  Settings,
-  LogOut,
-  Shield,
-  ActivityIcon,
-  BarChart3,
-  Loader2,
-  UserPlus,
-  Crown,
-  Edit,
-  Trash2,
-  Eye,
-  Briefcase,
-  Plus,
-} from "lucide-react"
+import { Building2, Users, Package, FileText, Settings, LogOut, Shield, ActivityIcon, BarChart3, Loader2, UserPlus, Crown, Edit, Trash2, Eye, Briefcase, Plus } from 'lucide-react'
 import { createClientClient } from "@/lib/supabase-client"
 import {
   getProjects,
@@ -86,7 +68,7 @@ import type {
   Activity,
 } from "@/lib/database"
 import { useToast } from "@/hooks/use-toast"
-import { useRouter } from "next/navigation"
+import { useRouter } from 'next/navigation'
 import type { User } from "@supabase/supabase-js"
 
 // Import tab components
@@ -719,14 +701,14 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                 onClick={() => setActiveTab("daily-logs")}
               >
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-purple-700">This Week</CardTitle>
+                  <CardTitle className="text-sm font-medium text-purple-700">Total Logs</CardTitle>
                   <div className="w-8 h-8 bg-purple-500 rounded-lg flex items-center justify-center">
                     <FileText className="h-4 w-4 text-white" />
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-purple-900">{thisWeekLogs}</div>
-                  <p className="text-xs text-purple-600 mt-1">daily logs submitted</p>
+                  <div className="text-2xl font-bold text-purple-900">{dailyLogs.length}</div>
+                  <p className="text-xs text-purple-600 mt-1">{thisWeekLogs} this week</p>
                 </CardContent>
               </Card>
             </div>
