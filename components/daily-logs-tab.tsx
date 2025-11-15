@@ -100,10 +100,6 @@ export default function DailyLogsTab({
 
   const [selectedLocationsForMaterial, setSelectedLocationsForMaterial] = useState<string[]>(["storage"])
 
-  // State to track which log is being considered for deletion
-  const [logToDelete, setLogToDelete] = useState<DailyLog | null>(null)
-
-
   // Load stats once on mount
   useEffect(() => {
     const loadStats = async () => {
@@ -601,18 +597,17 @@ export default function DailyLogsTab({
       })
       return
     }
-    // setSelectedLog(log) // Replaced with setLogToDelete
-    setLogToDelete(log) // Set the log to be deleted
-    setShowDeleteDialog(true) // Keep this open for the AlertDialog
+    setSelectedLog(log)
+    setShowDeleteDialog(true)
   }
 
   const confirmDelete = async () => {
-    if (!logToDelete) return // Use logToDelete instead of selectedLog
+    if (!selectedLog) return
     try {
       setDeleting(true)
       // Restore materials used in the deleted log
       let materialsToRestore: { id: string; quantity: number }[] = []
-      let materialsUsedParsed = logToDelete.materials_used // Use logToDelete
+      let materialsUsedParsed = selectedLog.materials_used
       if (typeof materialsUsedParsed === "string") {
         try {
           materialsUsedParsed = JSON.parse(materialsUsedParsed)
@@ -627,7 +622,7 @@ export default function DailyLogsTab({
         }))
       }
 
-      const success = await deleteDailyLog(logToDelete.id, materialsToRestore) // Use logToDelete
+      const success = await deleteDailyLog(selectedLog.id, materialsToRestore) // Pass materials to restore
       if (!success) {
         toast({ title: "Error", description: "Failed to delete daily log.", variant: "destructive" })
         return
@@ -636,7 +631,7 @@ export default function DailyLogsTab({
       logActivity({
         type: "daily_log",
         title: "Daily Log Deleted",
-        description: `Daily log for ${new Date(logToDelete.date).toLocaleDateString()} was deleted.`, // Use logToDelete
+        description: `Daily log for ${new Date(selectedLog.date).toLocaleDateString()} was deleted.`,
         icon: Trash2,
         variant: "destructive",
       })
@@ -651,8 +646,7 @@ export default function DailyLogsTab({
       reloadMaterials() // Reload materials to reflect restored stock
 
       setShowDeleteDialog(false)
-      // setSelectedLog(null) // Replaced with setLogToDelete
-      setLogToDelete(null) // Clear logToDelete
+      setSelectedLog(null)
       toast({ title: "Success", description: "Daily log deleted successfully!" })
     } catch (error) {
       console.error("Error deleting daily log:", error)
@@ -903,404 +897,402 @@ export default function DailyLogsTab({
   }
 
   return (
-    <TooltipProvider>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex justify-between items-center">
-          <div>
-            <h2 className="text-2xl font-bold">Daily Logs Management</h2>
-            <p className="text-gray-600">
-              Track daily work progress and material usage with dual tracking
-              {!canAddDailyLogs && " (View Only)"}
-              {canAddDailyLogs && !isAdmin && " (Manager Access)"}
-            </p>
-          </div>
-          {canAddDailyLogs && (
-            <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-              <DialogTrigger asChild>
-                <Button
-                  onClick={() => {
-                    resetForm()
-                    setShowAddDialog(true)
-                  }}
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Daily Log
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>Add Daily Log</DialogTitle>
-                  <DialogDescription>Record daily work progress and material usage with dual tracking</DialogDescription>
-                </DialogHeader>
-                <div className="space-y-6">
-                  {/* </CHANGE> */}
-                  {/* Remove single location selector, materials now tracked with their source location */}
-                  {/* </CHANGE> */}
-                  {/* </CHANGE> */}
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold">Daily Logs Management</h2>
+          <p className="text-gray-600">
+            Track daily work progress and material usage with dual tracking
+            {!canAddDailyLogs && " (View Only)"}
+            {canAddDailyLogs && !isAdmin && " (Manager Access)"}
+          </p>
+        </div>
+        {canAddDailyLogs && (
+          <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+            <DialogTrigger asChild>
+              <Button
+                onClick={() => {
+                  resetForm()
+                  setShowAddDialog(true)
+                }}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Daily Log
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Add Daily Log</DialogTitle>
+                <DialogDescription>Record daily work progress and material usage with dual tracking</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-6">
+                {/* </CHANGE> */}
+                {/* Remove single location selector, materials now tracked with their source location */}
+                {/* </CHANGE> */}
+                {/* </CHANGE> */}
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="date">Date *</Label>
-                      <Input
-                        id="date"
-                        type="date"
-                        value={formData.date}
-                        onChange={(e) => setFormData((prev) => ({ ...prev, date: e.target.value }))}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="project">Project *</Label>
-                      <Select
-                        value={formData.project_id}
-                        onValueChange={(value) => setFormData((prev) => ({ ...prev, project_id: value }))}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select project" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {projects.map((project) => (
-                            <SelectItem key={project.id} value={project.id}>
-                              {project.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
+                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="work_description">Work Description *</Label>
-                    <Textarea
-                      id="work_description"
-                      placeholder="Describe the work performed today"
-                      value={formData.work_description}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, work_description: e.target.value }))}
-                      rows={3}
+                    <Label htmlFor="date">Date *</Label>
+                    <Input
+                      id="date"
+                      type="date"
+                      value={formData.date}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, date: e.target.value }))}
                     />
                   </div>
-
-                  <div className="grid grid-cols-4 gap-4">
-                    <div>
-                      <Label htmlFor="working_place">Working Place</Label>
-                      <Input
-                        id="working_place"
-                        placeholder="Specific location or area"
-                        value={formData.working_place}
-                        onChange={(e) => setFormData((prev) => ({ ...prev, working_place: e.target.value }))}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="weather_conditions">Weather Conditions</Label>
-                      <Select
-                        value={formData.weather_conditions}
-                        onValueChange={(value) => setFormData((prev) => ({ ...prev, weather_conditions: value }))}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select weather" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {weatherOptions.map((weather) => (
-                            <SelectItem key={weather} value={weather}>
-                              {weather}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label htmlFor="hours_worked">Hours Worked *</Label>
-                      <Input
-                        id="hours_worked"
-                        type="number"
-                        min="0"
-                        max="24"
-                        step="0.5"
-                        value={formData.hours_worked}
-                        onChange={(e) => setFormData((prev) => ({ ...prev, hours_worked: Number(e.target.value) || 0 }))}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="status">Status *</Label>
-                      <Select
-                        value={formData.status}
-                        onValueChange={(value) => setFormData((prev) => ({ ...prev, status: value }))}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {statusOptions.map((status) => (
-                            <SelectItem key={status.value} value={status.value}>
-                              <div className="flex items-center gap-2">
-                                <status.icon className="h-4 w-4" />
-                                {status.label}
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
                   <div>
-                    <Label htmlFor="equipment_used">Equipment Used</Label>
-                    <Textarea
-                      id="equipment_used"
-                      placeholder="List equipment and machinery used (separate with commas or new lines)"
-                      value={formData.equipment_used}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, equipment_used: e.target.value }))}
-                      rows={2}
+                    <Label htmlFor="project">Project *</Label>
+                    <Select
+                      value={formData.project_id}
+                      onValueChange={(value) => setFormData((prev) => ({ ...prev, project_id: value }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select project" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {projects.map((project) => (
+                          <SelectItem key={project.id} value={project.id}>
+                            {project.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="work_description">Work Description *</Label>
+                  <Textarea
+                    id="work_description"
+                    placeholder="Describe the work performed today"
+                    value={formData.work_description}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, work_description: e.target.value }))}
+                    rows={3}
+                  />
+                </div>
+
+                <div className="grid grid-cols-4 gap-4">
+                  <div>
+                    <Label htmlFor="working_place">Working Place</Label>
+                    <Input
+                      id="working_place"
+                      placeholder="Specific location or area"
+                      value={formData.working_place}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, working_place: e.target.value }))}
                     />
                   </div>
-
                   <div>
-                    <Label>Workers Present</Label>
-                    <ScrollArea className="h-32 border rounded-md p-3">
-                      <div className="space-y-2">
-                        {workers
-                          .filter((worker) => worker.status === "Active")
-                          .map((worker) => {
-                            const isChecked = formData.workers_present.includes(String(worker.id))
-                            
+                    <Label htmlFor="weather_conditions">Weather Conditions</Label>
+                    <Select
+                      value={formData.weather_conditions}
+                      onValueChange={(value) => setFormData((prev) => ({ ...prev, weather_conditions: value }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select weather" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {weatherOptions.map((weather) => (
+                          <SelectItem key={weather} value={weather}>
+                            {weather}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="hours_worked">Hours Worked *</Label>
+                    <Input
+                      id="hours_worked"
+                      type="number"
+                      min="0"
+                      max="24"
+                      step="0.5"
+                      value={formData.hours_worked}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, hours_worked: Number(e.target.value) || 0 }))}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="status">Status *</Label>
+                    <Select
+                      value={formData.status}
+                      onValueChange={(value) => setFormData((prev) => ({ ...prev, status: value }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {statusOptions.map((status) => (
+                          <SelectItem key={status.value} value={status.value}>
+                            <div className="flex items-center gap-2">
+                              <status.icon className="h-4 w-4" />
+                              {status.label}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
 
-                            return (
-                              <div key={worker.id} className="flex items-center space-x-2">
-                                <Checkbox
-                                  id={`worker-${worker.id}`}
-                                  checked={isChecked}
-                                  onCheckedChange={(checked) => {
-                
-                                    handleWorkerToggle(String(worker.id), checked as boolean)
-                                  }}
+                <div>
+                  <Label htmlFor="equipment_used">Equipment Used</Label>
+                  <Textarea
+                    id="equipment_used"
+                    placeholder="List equipment and machinery used (separate with commas or new lines)"
+                    value={formData.equipment_used}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, equipment_used: e.target.value }))}
+                    rows={2}
+                  />
+                </div>
+
+                <div>
+                  <Label>Workers Present</Label>
+                  <ScrollArea className="h-32 border rounded-md p-3">
+                    <div className="space-y-2">
+                      {workers
+                        .filter((worker) => worker.status === "Active")
+                        .map((worker) => {
+                          const isChecked = formData.workers_present.includes(String(worker.id))
+                          
+
+                          return (
+                            <div key={worker.id} className="flex items-center space-x-2">
+                              <Checkbox
+                                id={`worker-${worker.id}`}
+                                checked={isChecked}
+                                onCheckedChange={(checked) => {
+              
+                                  handleWorkerToggle(String(worker.id), checked as boolean)
+                                }}
+                              />
+                              <Label htmlFor={`worker-${worker.id}`} className="text-sm cursor-pointer">
+                                {worker.name} - {worker.role}
+                              </Label>
+                            </div>
+                          )
+                        })}
+                    </div>
+                  </ScrollArea>
+                  {formData.workers_present.length > 0 && (
+                    <div className="mt-2 text-sm text-gray-600">
+                      Selected: {formData.workers_present.length} worker(s)
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Label>Materials Used</Label>
+                    <div className="flex items-center gap-1 text-xs text-gray-500 bg-blue-50 px-2 py-1 rounded">
+                      <Info className="h-3 w-3" />
+                      Select locations first, then choose materials from those locations
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    {formData.materials_used.map((materialUsed, index) => {
+                      const material = materials.find((m) => m.id === materialUsed.material_id)
+                      return (
+                        <div key={index} className="p-4 border rounded-lg bg-gray-50">
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex flex-col">
+                              <span className="font-medium">{getMaterialName(materialUsed.material_id)}</span>
+                              <span className="text-xs text-gray-500 flex items-center gap-1 mt-1">
+                                <MapPin className="h-3 w-3" />
+                                From: {getLocationName(materialUsed.source_location)}
+                              </span>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeMaterial(materialUsed.material_id)}
+                              className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <Label
+                                htmlFor={`material-actual-${materialUsed.material_id}`}
+                                className="text-xs flex items-center gap-1"
+                              >
+                                <Lock className="h-3 w-3" />
+                                Actual Usage (Internal)
+                              </Label>
+                              <div className="flex items-center">
+                                <Input
+                                  id={`material-actual-${materialUsed.material_id}`}
+                                  type="number"
+                                  min="0"
+                                  step="0.1"
+                                  value={materialUsed.actual_quantity}
+                                  onChange={(e) =>
+                                    handleMaterialChange(
+                                      materialUsed.material_id,
+                                      Number.parseFloat(e.target.value) || 0,
+                                      materialUsed.visible_quantity,
+                                      materialUsed.source_location,
+                                    )
+                                  }
+                                  className="flex-1"
                                 />
-                                <Label htmlFor={`worker-${worker.id}`} className="text-sm cursor-pointer">
-                                  {worker.name} - {worker.role}
-                                </Label>
-                              </div>
-                            )
-                          })}
-                      </div>
-                    </ScrollArea>
-                    {formData.workers_present.length > 0 && (
-                      <div className="mt-2 text-sm text-gray-600">
-                        Selected: {formData.workers_present.length} worker(s)
-                      </div>
-                    )}
-                  </div>
-
-                  <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <Label>Materials Used</Label>
-                      <div className="flex items-center gap-1 text-xs text-gray-500 bg-blue-50 px-2 py-1 rounded">
-                        <Info className="h-3 w-3" />
-                        Select locations first, then choose materials from those locations
-                      </div>
-                    </div>
-                    <div className="space-y-3">
-                      {formData.materials_used.map((materialUsed, index) => {
-                        const material = materials.find((m) => m.id === materialUsed.material_id)
-                        return (
-                          <div key={index} className="p-4 border rounded-lg bg-gray-50">
-                            <div className="flex items-center justify-between mb-3">
-                              <div className="flex flex-col">
-                                <span className="font-medium">{getMaterialName(materialUsed.material_id)}</span>
-                                <span className="text-xs text-gray-500 flex items-center gap-1 mt-1">
-                                  <MapPin className="h-3 w-3" />
-                                  From: {getLocationName(materialUsed.source_location)}
+                                <span className="text-sm text-gray-500 ml-2 w-12">
+                                  {getMaterialUnit(materialUsed.material_id)}
                                 </span>
                               </div>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => removeMaterial(materialUsed.material_id)}
-                                className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                              <div className="text-xs text-gray-500 mt-1">Affects inventory calculations</div>
+                            </div>
+                            <div>
+                              <Label
+                                htmlFor={`material-visible-${materialUsed.material_id}`}
+                                className="text-xs flex items-center gap-1"
                               >
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                              <div>
-                                <Label
-                                  htmlFor={`material-actual-${materialUsed.material_id}`}
-                                  className="text-xs flex items-center gap-1"
-                                >
-                                  <Lock className="h-3 w-3" />
-                                  Actual Usage (Internal)
-                                </Label>
-                                <div className="flex items-center">
-                                  <Input
-                                    id={`material-actual-${materialUsed.material_id}`}
-                                    type="number"
-                                    min="0"
-                                    step="0.1"
-                                    value={materialUsed.actual_quantity}
-                                    onChange={(e) =>
-                                      handleMaterialChange(
-                                        materialUsed.material_id,
-                                        Number.parseFloat(e.target.value) || 0,
-                                        materialUsed.visible_quantity,
-                                        materialUsed.source_location,
-                                      )
-                                    }
-                                    className="flex-1"
-                                  />
-                                  <span className="text-sm text-gray-500 ml-2 w-12">
-                                    {getMaterialUnit(materialUsed.material_id)}
-                                  </span>
-                                </div>
-                                <div className="text-xs text-gray-500 mt-1">Affects inventory calculations</div>
-                              </div>
-                              <div>
-                                <Label
-                                  htmlFor={`material-visible-${materialUsed.material_id}`}
-                                  className="text-xs flex items-center gap-1"
-                                >
-                                  <Unlock className="h-3 w-3" />
-                                  Visible Usage (Public)
-                                </Label>
-                                <div className="flex items-center">
-                                  <Input
-                                    id={`material-visible-${materialUsed.material_id}`}
-                                    type="number"
-                                    min="0"
-                                    step="0.1"
-                                    value={materialUsed.visible_quantity}
-                                    onChange={(e) =>
-                                      handleMaterialChange(
-                                        materialUsed.material_id,
-                                        materialUsed.actual_quantity,
-                                        Number.parseFloat(e.target.value) || 0,
-                                        materialUsed.source_location,
-                                      )
-                                    }
-                                    className="flex-1"
-                                  />
-                                  <span className="text-sm text-gray-500 ml-2 w-12">
-                                    {getMaterialUnit(materialUsed.material_id)}
-                                  </span>
-                                </div>
-                                <div className="text-xs text-gray-500 mt-1">Shown to non-admin users</div>
-                              </div>
-                            </div>
-                          </div>
-                        )
-                      })}
-
-                      <div className="border rounded-lg p-4 bg-blue-50 space-y-4">
-                        <div>
-                          <Label className="text-sm font-medium mb-3 block flex items-center gap-2">
-                            <Building2 className="h-4 w-4" />
-                            1. Select Locations to Pull Materials From
-                          </Label>
-                          <ScrollArea className="h-48 border rounded-md p-3 bg-white">
-                            <div className="space-y-2">
-                              {/* Storage option */}
-                              <div className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded">
-                                <Checkbox
-                                  id="location-storage"
-                                  checked={selectedLocationsForMaterial.includes("storage")}
-                                  onCheckedChange={(checked) => handleLocationToggle("storage", checked as boolean)}
+                                <Unlock className="h-3 w-3" />
+                                Visible Usage (Public)
+                              </Label>
+                              <div className="flex items-center">
+                                <Input
+                                  id={`material-visible-${materialUsed.material_id}`}
+                                  type="number"
+                                  min="0"
+                                  step="0.1"
+                                  value={materialUsed.visible_quantity}
+                                  onChange={(e) =>
+                                    handleMaterialChange(
+                                      materialUsed.material_id,
+                                      materialUsed.actual_quantity,
+                                      Number.parseFloat(e.target.value) || 0,
+                                      materialUsed.source_location,
+                                    )
+                                  }
+                                  className="flex-1"
                                 />
-                                <Label
-                                  htmlFor="location-storage"
-                                  className="flex items-center gap-2 cursor-pointer flex-1"
-                                >
-                                  <Package className="h-4 w-4 text-blue-600" />
-                                  <span className="font-medium">Central Storage</span>
-                                  <span className="text-xs text-gray-500 ml-auto">
-                                    ({materials.filter((m) => !m.project_id).length} materials)
-                                  </span>
-                                </Label>
+                                <span className="text-sm text-gray-500 ml-2 w-12">
+                                  {getMaterialUnit(materialUsed.material_id)}
+                                </span>
                               </div>
-
-                              {/* Project options */}
-                              {projects.map((project) => {
-                                const projectMaterialCount = materials.filter((m) => m.project_id === project.id).length
-                                return (
-                                  <div
-                                    key={project.id}
-                                    className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded"
-                                  >
-                                    <Checkbox
-                                      id={`location-${project.id}`}
-                                      checked={selectedLocationsForMaterial.includes(project.id)}
-                                      onCheckedChange={(checked) => handleLocationToggle(project.id, checked as boolean)}
-                                    />
-                                    <Label
-                                      htmlFor={`location-${project.id}`}
-                                      className="flex items-center gap-2 cursor-pointer flex-1"
-                                    >
-                                      <Building2 className="h-4 w-4 text-green-600" />
-                                      <span className="font-medium">{project.name}</span>
-                                      <span className="text-xs text-gray-500 ml-auto">
-                                        ({projectMaterialCount} materials)
-                                      </span>
-                                    </Label>
-                                  </div>
-                                )
-                              })}
+                              <div className="text-xs text-gray-500 mt-1">Shown to non-admin users</div>
                             </div>
-                          </ScrollArea>
-                          <div className="text-xs text-gray-600 mt-2 flex items-center gap-1">
-                            <CheckCircle className="h-3 w-3" />
-                            {selectedLocationsForMaterial.length} location(s) selected
                           </div>
                         </div>
+                      )
+                    })}
 
-                        <div>
-                          <Label className="text-sm font-medium mb-2 block">
-                            2. Select Material from Selected Locations
-                          </Label>
-                          {availableMaterialsFromLocation.length > 0 ? (
-                            <Select
-                              onValueChange={(materialId) => {
-                                const material = materials.find((m) => m.id === materialId)
-                                if (material && !formData.materials_used.some((m) => m.material_id === materialId)) {
-                                  const sourceLocation = material.project_id || "storage"
-                                  handleMaterialChange(materialId, 0, 0, sourceLocation)
-                                }
-                              }}
-                            >
-                              <SelectTrigger className="bg-white">
-                                <SelectValue
-                                  placeholder={`Select material (${availableMaterialsFromLocation.length} available)`}
-                                />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {availableMaterialsFromLocation.map((material) => {
-                                  const locationName = material.project_id
-                                    ? getProjectName(material.project_id)
-                                    : "Central Storage"
-                                  return (
-                                    <SelectItem key={material.id} value={material.id}>
-                                      <div className="flex items-center gap-2">
-                                        <span>{material.name}</span>
-                                        <span className="text-xs text-gray-500">
-                                          ({material.current_stock} {material.unit})
-                                        </span>
-                                        <Badge variant="outline" className="text-xs">
-                                          {locationName}
-                                        </Badge>
-                                      </div>
-                                    </SelectItem>
-                                  )
-                                })}
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <p className="text-sm text-gray-500 bg-white p-3 rounded border">
-                              {selectedLocationsForMaterial.length === 0
-                                ? "Please select at least one location above"
-                                : "No materials available in selected locations"}
-                            </p>
-                          )}
+                    <div className="border rounded-lg p-4 bg-blue-50 space-y-4">
+                      <div>
+                        <Label className="text-sm font-medium mb-3 block flex items-center gap-2">
+                          <Building2 className="h-4 w-4" />
+                          1. Select Locations to Pull Materials From
+                        </Label>
+                        <ScrollArea className="h-48 border rounded-md p-3 bg-white">
+                          <div className="space-y-2">
+                            {/* Storage option */}
+                            <div className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded">
+                              <Checkbox
+                                id="location-storage"
+                                checked={selectedLocationsForMaterial.includes("storage")}
+                                onCheckedChange={(checked) => handleLocationToggle("storage", checked as boolean)}
+                              />
+                              <Label
+                                htmlFor="location-storage"
+                                className="flex items-center gap-2 cursor-pointer flex-1"
+                              >
+                                <Package className="h-4 w-4 text-blue-600" />
+                                <span className="font-medium">Central Storage</span>
+                                <span className="text-xs text-gray-500 ml-auto">
+                                  ({materials.filter((m) => !m.project_id).length} materials)
+                                </span>
+                              </Label>
+                            </div>
+
+                            {/* Project options */}
+                            {projects.map((project) => {
+                              const projectMaterialCount = materials.filter((m) => m.project_id === project.id).length
+                              return (
+                                <div
+                                  key={project.id}
+                                  className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded"
+                                >
+                                  <Checkbox
+                                    id={`location-${project.id}`}
+                                    checked={selectedLocationsForMaterial.includes(project.id)}
+                                    onCheckedChange={(checked) => handleLocationToggle(project.id, checked as boolean)}
+                                  />
+                                  <Label
+                                    htmlFor={`location-${project.id}`}
+                                    className="flex items-center gap-2 cursor-pointer flex-1"
+                                  >
+                                    <Building2 className="h-4 w-4 text-green-600" />
+                                    <span className="font-medium">{project.name}</span>
+                                    <span className="text-xs text-gray-500 ml-auto">
+                                      ({projectMaterialCount} materials)
+                                    </span>
+                                  </Label>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </ScrollArea>
+                        <div className="text-xs text-gray-600 mt-2 flex items-center gap-1">
+                          <CheckCircle className="h-3 w-3" />
+                          {selectedLocationsForMaterial.length} location(s) selected
                         </div>
                       </div>
-                      {/* </CHANGE> */}
+
+                      <div>
+                        <Label className="text-sm font-medium mb-2 block">
+                          2. Select Material from Selected Locations
+                        </Label>
+                        {availableMaterialsFromLocation.length > 0 ? (
+                          <Select
+                            onValueChange={(materialId) => {
+                              const material = materials.find((m) => m.id === materialId)
+                              if (material && !formData.materials_used.some((m) => m.material_id === materialId)) {
+                                const sourceLocation = material.project_id || "storage"
+                                handleMaterialChange(materialId, 0, 0, sourceLocation)
+                              }
+                            }}
+                          >
+                            <SelectTrigger className="bg-white">
+                              <SelectValue
+                                placeholder={`Select material (${availableMaterialsFromLocation.length} available)`}
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableMaterialsFromLocation.map((material) => {
+                                const locationName = material.project_id
+                                  ? getProjectName(material.project_id)
+                                  : "Central Storage"
+                                return (
+                                  <SelectItem key={material.id} value={material.id}>
+                                    <div className="flex items-center gap-2">
+                                      <span>{material.name}</span>
+                                      <span className="text-xs text-gray-500">
+                                        ({material.current_stock} {material.unit})
+                                      </span>
+                                      <Badge variant="outline" className="text-xs">
+                                        {locationName}
+                                      </Badge>
+                                    </div>
+                                  </SelectItem>
+                                )
+                              })}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <p className="text-sm text-gray-500 bg-white p-3 rounded border">
+                            {selectedLocationsForMaterial.length === 0
+                              ? "Please select at least one location above"
+                              : "No materials available in selected locations"}
+                          </p>
+                        )}
+                      </div>
                     </div>
                     {/* </CHANGE> */}
                   </div>
+                  {/* </CHANGE> */}
                 </div>
 
                 <div>
@@ -1630,95 +1622,108 @@ export default function DailyLogsTab({
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <div className="flex items-center cursor-help">
-                              <Users className="h-4 w-4 mr-2 text-gray-400" />
-                              <span className="text-sm">{workersPresent.length} workers</span>
-                            </div>
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-xs">
-                            <div className="space-y-1">
-                              <p className="font-semibold text-sm mb-2">Workers Present:</p>
-                              {workersPresent.length > 0 ? (
-                                workersPresent.map((workerId: string, idx: number) => {
-                                  const worker = workers.find((w) => w.id === workerId)
-                                  return (
-                                    <div key={idx} className="text-sm flex items-center gap-2">
-                                      <User className="h-3 w-3" />
-                                      {worker?.name || "Unknown Worker"}
-                                    </div>
-                                  )
-                                })
-                              ) : (
-                                <p className="text-sm text-gray-500">No workers assigned</p>
-                              )}
-                            </div>
-                          </TooltipContent>
-                        </Tooltip>
+                        {(() => {
+                          const workersPresent = Array.isArray(log.workers_present)
+                            ? log.workers_present
+                            : JSON.parse(log.workers_present || "[]")
+                          return workersPresent.length > 0 ? (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div className="flex items-center cursor-help">
+                                    <Users className="h-4 w-4 mr-2 text-gray-400" />
+                                    <span className="text-sm">{workersPresent.length} workers</span>
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-xs">
+                                  <div className="space-y-1">
+                                    <p className="font-semibold text-sm mb-2">Workers Present:</p>
+                                    {workersPresent.length > 0 ? (
+                                      workersPresent.map((workerId: string | number, idx: number) => {
+                                        const workerName = getWorkerName(workerId)
+                                        return (
+                                          <div key={idx} className="text-sm flex items-center gap-2">
+                                            <User className="h-3 w-3" />
+                                            {workerName}
+                                          </div>
+                                        )
+                                      })
+                                    ) : (
+                                      <p className="text-sm text-gray-500">No workers assigned</p>
+                                    )}
+                                  </div>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          ) : (
+                            <span className="text-gray-400 text-sm">-</span>
+                          )
+                        })()}
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary">{log.weather_conditions || log.weather || "N/A"}</Badge>
                       </TableCell>
                       <TableCell>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <div className="flex items-center gap-1 cursor-help">
-                              <Package className="h-4 w-4 mr-2 text-gray-400" />
-                              <span className="text-sm">
-                                {Array.isArray(materialsUsed) ? materialsUsed.length : 0} items
-                              </span>
-                              {isAdmin &&
-                                Array.isArray(materialsUsed) &&
-                                materialsUsed.some((m) => m.actual_quantity !== m.visible_quantity) && (
-                                  <div className="flex items-center gap-1 text-xs text-blue-600">
-                                    <Lock className="h-3 w-3" />
-                                    <span>Dual</span>
-                                  </div>
-                                )}
-                            </div>
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-md">
-                            <div className="space-y-2">
-                              <p className="font-semibold text-sm mb-2">Materials Used:</p>
-                              {Array.isArray(materialsUsed) && materialsUsed.length > 0 ? (
-                                materialsUsed.map((material: any, idx: number) => (
-                                  <div key={idx} className="text-sm border-b pb-2 last:border-0">
-                                    <div className="flex items-start justify-between gap-2">
-                                      <div className="flex-1">
-                                        <div className="font-medium">{getMaterialName(material.material_id)}</div>
-                                        <div className="text-gray-500 text-xs mt-1">
-                                          {isAdmin && material.actual_quantity !== material.visible_quantity ? (
-                                            <div className="space-y-1">
-                                              <div className="flex items-center gap-1">
-                                                <Unlock className="h-3 w-3" />
-                                                Visible: {material.visible_quantity} {getMaterialUnit(material.material_id)}
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className="flex items-center gap-1 cursor-help">
+                                <Package className="h-4 w-4 mr-2 text-gray-400" />
+                                <span className="text-sm">
+                                  {Array.isArray(materialsUsed) ? materialsUsed.length : 0} items
+                                </span>
+                                {isAdmin &&
+                                  Array.isArray(materialsUsed) &&
+                                  materialsUsed.some((m) => m.actual_quantity !== m.visible_quantity) && (
+                                    <div className="flex items-center gap-1 text-xs text-blue-600">
+                                      <Lock className="h-3 w-3" />
+                                      <span>Dual</span>
+                                    </div>
+                                  )}
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-md">
+                              <div className="space-y-2">
+                                <p className="font-semibold text-sm mb-2">Materials Used:</p>
+                                {Array.isArray(materialsUsed) && materialsUsed.length > 0 ? (
+                                  materialsUsed.map((material: any, idx: number) => (
+                                    <div key={idx} className="text-sm border-b pb-2 last:border-0">
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div className="flex-1">
+                                          <div className="font-medium">{getMaterialName(material.material_id)}</div>
+                                          <div className="text-gray-500 text-xs mt-1">
+                                            {isAdmin && material.actual_quantity !== material.visible_quantity ? (
+                                              <div className="space-y-1">
+                                                <div className="flex items-center gap-1">
+                                                  <Unlock className="h-3 w-3" />
+                                                  Visible: {material.visible_quantity} {getMaterialUnit(material.material_id)}
+                                                </div>
+                                                <div className="flex items-center gap-1 text-blue-600">
+                                                  <Lock className="h-3 w-3" />
+                                                  Actual: {material.actual_quantity} {getMaterialUnit(material.material_id)}
+                                                </div>
                                               </div>
-                                              <div className="flex items-center gap-1 text-blue-600">
-                                                <Lock className="h-3 w-3" />
-                                                Actual: {material.actual_quantity} {getMaterialUnit(material.material_id)}
-                                              </div>
+                                            ) : (
+                                              <span>Quantity: {material.visible_quantity || material.quantity} {getMaterialUnit(material.material_id)}</span>
+                                            )}
+                                          </div>
+                                          {material.source_location && (
+                                            <div className="flex items-center gap-1 text-xs text-gray-400 mt-1">
+                                              <MapPin className="h-3 w-3" />
+                                              <span>From: {getLocationName(material.source_location)}</span>
                                             </div>
-                                          ) : (
-                                            <span>Quantity: {material.visible_quantity || material.quantity} {getMaterialUnit(material.material_id)}</span>
                                           )}
                                         </div>
-                                        {material.source_location && (
-                                          <div className="flex items-center gap-1 text-xs text-gray-400 mt-1">
-                                            <MapPin className="h-3 w-3" />
-                                            <span>From: {getLocationName(material.source_location)}</span>
-                                          </div>
-                                        )}
                                       </div>
                                     </div>
-                                  </div>
-                                ))
-                              ) : (
-                                <p className="text-sm text-gray-500">No materials used</p>
-                              )}
-                            </div>
-                          </TooltipContent>
-                        </Tooltip>
+                                  ))
+                                ) : (
+                                  <p className="text-sm text-gray-500">No materials used</p>
+                                )}
+                              </div>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
@@ -2411,13 +2416,13 @@ export default function DailyLogsTab({
 
       {/* Delete Confirmation Dialog */}
       {canDeleteDailyLogs && (
-        <AlertDialog open={!!logToDelete} onOpenChange={() => setLogToDelete(null)}>
+        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Are you sure?</AlertDialogTitle>
               <AlertDialogDescription>
                 This will permanently delete the daily log for{" "}
-                {logToDelete && new Date(logToDelete.date).toLocaleDateString()} and all its data. This action cannot be
+                {selectedLog && new Date(selectedLog.date).toLocaleDateString()} and all its data. This action cannot be
                 undone and will restore any materials used back to inventory.
               </AlertDialogDescription>
             </AlertDialogHeader>
@@ -2437,7 +2442,6 @@ export default function DailyLogsTab({
           </AlertDialogContent>
         </AlertDialog>
       )}
-      </div>
-    </TooltipProvider>
+    </div>
   )
 }
