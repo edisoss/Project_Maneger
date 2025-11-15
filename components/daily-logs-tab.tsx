@@ -99,20 +99,34 @@ export default function DailyLogsTab({
 
   const [selectedLocationsForMaterial, setSelectedLocationsForMaterial] = useState<string[]>(["storage"])
 
+  // Load stats once on mount
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        const statsData = await getDailyLogsStats()
+        if (statsData) {
+          setStats(statsData)
+        }
+      } catch (error) {
+        console.log("[v0] Error loading stats:", error)
+      }
+    }
+    loadStats()
+  }, []) // Load once on mount
+
+  // Load paginated logs and total count
   useEffect(() => {
     const loadPaginatedLogs = async () => {
       const offset = (currentPage - 1) * logsPerPage
-      const logs = await getDailyLogs(logsPerPage, offset, {
-        dateFilter,
-        projectFilter,
-      }) // Pass filters to getDailyLogs
-      const count = await getDailyLogsCount({ dateFilter, projectFilter }) // Pass filters to getDailyLogsCount
+      const logs = await getDailyLogs(logsPerPage, offset)
+      const count = await getDailyLogsCount()
       setDailyLogs(logs)
       setTotalLogs(count)
     }
     loadPaginatedLogs()
-  }, [currentPage, setDailyLogs, dateFilter, projectFilter]) // Add filters to dependency array
+  }, [currentPage, setDailyLogs])
 
+  // Effect to reload stats when filters change
   useEffect(() => {
     const loadStats = async () => {
       try {

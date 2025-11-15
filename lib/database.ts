@@ -1648,10 +1648,7 @@ export async function getMaterialTransfers(materialId?: string): Promise<Materia
   }
 }
 
-export async function getDailyLogsStats(filters?: {
-  dateFilter?: { quickFilter?: string; fromDate?: string; toDate?: string }
-  projectFilter?: string
-}): Promise<{
+export async function getDailyLogsStats(): Promise<{
   totalLogs: number
   thisWeekCount: number
   thisMonthCount: number
@@ -1663,7 +1660,7 @@ export async function getDailyLogsStats(filters?: {
       return { totalLogs: 0, thisWeekCount: 0, thisMonthCount: 0, activeProjects: 0 }
     }
 
-    // Get all logs (not paginated) to calculate statistics
+    // Get all logs to calculate statistics
     const { data: allLogs, error } = await supabase
       .from("daily_logs")
       .select("date, project_id")
@@ -1673,48 +1670,23 @@ export async function getDailyLogsStats(filters?: {
       return { totalLogs: 0, thisWeekCount: 0, thisMonthCount: 0, activeProjects: 0 }
     }
 
-    // Apply filters if provided
-    let filtered = allLogs
-
-    // Apply project filter
-    if (filters?.projectFilter && filters.projectFilter !== "all") {
-      filtered = filtered.filter((log) => log.project_id === filters.projectFilter)
-    }
-
-    // Apply date filter
-    if (filters?.dateFilter) {
-      const df = filters.dateFilter
-      filtered = filtered.filter((log) => {
-        const logDate = new Date(log.date)
-        const logDateStr = logDate.toISOString().split("T")[0]
-
-        if (df.fromDate && logDateStr < df.fromDate) {
-          return false
-        }
-        if (df.toDate && logDateStr > df.toDate) {
-          return false
-        }
-        return true
-      })
-    }
-
-    const totalLogs = filtered.length
+    const totalLogs = allLogs.length
     const now = new Date()
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
     const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
 
-    const thisWeekCount = filtered.filter((log) => {
+    const thisWeekCount = allLogs.filter((log) => {
       const logDate = new Date(log.date)
       return logDate >= weekAgo
     }).length
 
-    const thisMonthCount = filtered.filter((log) => {
+    const thisMonthCount = allLogs.filter((log) => {
       const logDate = new Date(log.date)
       return logDate >= monthAgo
     }).length
 
-    // Count active projects with logs
-    const projectsWithLogs = new Set(filtered.map((log) => log.project_id).filter((pid) => pid !== null && pid !== undefined))
+    // Count unique active projects
+    const projectsWithLogs = new Set(allLogs.map((log) => log.project_id).filter((pid) => pid !== null && pid !== undefined))
     const activeProjects = projectsWithLogs.size
 
     return { totalLogs, thisWeekCount, thisMonthCount, activeProjects }
