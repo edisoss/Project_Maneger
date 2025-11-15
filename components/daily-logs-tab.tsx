@@ -100,6 +100,10 @@ export default function DailyLogsTab({
 
   const [selectedLocationsForMaterial, setSelectedLocationsForMaterial] = useState<string[]>(["storage"])
 
+  // State to track which log is being considered for deletion
+  const [logToDelete, setLogToDelete] = useState<DailyLog | null>(null)
+
+
   // Load stats once on mount
   useEffect(() => {
     const loadStats = async () => {
@@ -597,17 +601,18 @@ export default function DailyLogsTab({
       })
       return
     }
-    setSelectedLog(log)
-    setShowDeleteDialog(true)
+    // setSelectedLog(log) // Replaced with setLogToDelete
+    setLogToDelete(log) // Set the log to be deleted
+    setShowDeleteDialog(true) // Keep this open for the AlertDialog
   }
 
   const confirmDelete = async () => {
-    if (!selectedLog) return
+    if (!logToDelete) return // Use logToDelete instead of selectedLog
     try {
       setDeleting(true)
       // Restore materials used in the deleted log
       let materialsToRestore: { id: string; quantity: number }[] = []
-      let materialsUsedParsed = selectedLog.materials_used
+      let materialsUsedParsed = logToDelete.materials_used // Use logToDelete
       if (typeof materialsUsedParsed === "string") {
         try {
           materialsUsedParsed = JSON.parse(materialsUsedParsed)
@@ -622,7 +627,7 @@ export default function DailyLogsTab({
         }))
       }
 
-      const success = await deleteDailyLog(selectedLog.id, materialsToRestore) // Pass materials to restore
+      const success = await deleteDailyLog(logToDelete.id, materialsToRestore) // Use logToDelete
       if (!success) {
         toast({ title: "Error", description: "Failed to delete daily log.", variant: "destructive" })
         return
@@ -631,7 +636,7 @@ export default function DailyLogsTab({
       logActivity({
         type: "daily_log",
         title: "Daily Log Deleted",
-        description: `Daily log for ${new Date(selectedLog.date).toLocaleDateString()} was deleted.`,
+        description: `Daily log for ${new Date(logToDelete.date).toLocaleDateString()} was deleted.`, // Use logToDelete
         icon: Trash2,
         variant: "destructive",
       })
@@ -646,7 +651,8 @@ export default function DailyLogsTab({
       reloadMaterials() // Reload materials to reflect restored stock
 
       setShowDeleteDialog(false)
-      setSelectedLog(null)
+      // setSelectedLog(null) // Replaced with setLogToDelete
+      setLogToDelete(null) // Clear logToDelete
       toast({ title: "Success", description: "Daily log deleted successfully!" })
     } catch (error) {
       console.error("Error deleting daily log:", error)
@@ -2405,13 +2411,13 @@ export default function DailyLogsTab({
 
       {/* Delete Confirmation Dialog */}
       {canDeleteDailyLogs && (
-        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialog open={!!logToDelete} onOpenChange={() => setLogToDelete(null)}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Are you sure?</AlertDialogTitle>
               <AlertDialogDescription>
                 This will permanently delete the daily log for{" "}
-                {selectedLog && new Date(selectedLog.date).toLocaleDateString()} and all its data. This action cannot be
+                {logToDelete && new Date(logToDelete.date).toLocaleDateString()} and all its data. This action cannot be
                 undone and will restore any materials used back to inventory.
               </AlertDialogDescription>
             </AlertDialogHeader>
@@ -2431,6 +2437,7 @@ export default function DailyLogsTab({
           </AlertDialogContent>
         </AlertDialog>
       )}
+      </div>
     </TooltipProvider>
   )
 }
