@@ -1473,8 +1473,8 @@ export default function DailyLogsTab({
                 (Showing {filteredLogs.length} of {totalLogs} logs)
               </span>
             )}
-            <span className="ml-2 text-gray-500">
-              (Page {currentPage} of {totalPages}, Total: {totalLogs} logs)
+            <span className="ml-2 text-gray-600 font-semibold">
+              Total Logs: {totalLogs} | Page {currentPage} of {totalPages}
             </span>
           </CardDescription>
         </CardHeader>
