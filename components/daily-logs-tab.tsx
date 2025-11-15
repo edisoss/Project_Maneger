@@ -115,17 +115,17 @@ export default function DailyLogsTab({
 
   useEffect(() => {
     const loadStats = async () => {
-      const stats = await getDailyLogsStats({
-        dateFilter,
-        projectFilter,
-      })
-      setStats({
-        totalLogs: stats.totalLogs,
-        thisWeekCount: stats.thisWeekCount,
-        thisMonthCount: stats.thisMonthCount,
-        activeProjects: stats.activeProjects,
-      })
-      // Statistics are now calculated from all logs matching the filters, not just the current page
+      try {
+        const statsData = await getDailyLogsStats({
+          dateFilter,
+          projectFilter,
+        })
+        if (statsData) {
+          setStats(statsData)
+        }
+      } catch (error) {
+        // Silently handle error
+      }
     }
     loadStats()
   }, [dateFilter, projectFilter])

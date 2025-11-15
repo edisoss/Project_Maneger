@@ -1652,14 +1652,15 @@ export async function getDailyLogsStats(filters?: {
   dateFilter?: { quickFilter?: string; fromDate?: string; toDate?: string }
   projectFilter?: string
 }): Promise<{
-  total: number
-  thisWeek: number
-  thisMonth: number
+  totalLogs: number
+  thisWeekCount: number
+  thisMonthCount: number
+  activeProjects: number
 }> {
   try {
     const supabase = createClientClient()
     if (!supabase) {
-      return { total: 0, thisWeek: 0, thisMonth: 0 }
+      return { totalLogs: 0, thisWeekCount: 0, thisMonthCount: 0, activeProjects: 0 }
     }
 
     // Get all logs (not paginated) to calculate statistics
@@ -1669,7 +1670,7 @@ export async function getDailyLogsStats(filters?: {
       .order("created_at", { ascending: false })
 
     if (error || !allLogs) {
-      return { total: 0, thisWeek: 0, thisMonth: 0 }
+      return { totalLogs: 0, thisWeekCount: 0, thisMonthCount: 0, activeProjects: 0 }
     }
 
     // Apply filters if provided
@@ -1697,23 +1698,27 @@ export async function getDailyLogsStats(filters?: {
       })
     }
 
-    const total = filtered.length
+    const totalLogs = filtered.length
     const now = new Date()
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
     const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
 
-    const thisWeek = filtered.filter((log) => {
+    const thisWeekCount = filtered.filter((log) => {
       const logDate = new Date(log.date)
       return logDate >= weekAgo
     }).length
 
-    const thisMonth = filtered.filter((log) => {
+    const thisMonthCount = filtered.filter((log) => {
       const logDate = new Date(log.date)
       return logDate >= monthAgo
     }).length
 
-    return { total, thisWeek, thisMonth }
+    // Count active projects with logs
+    const projectsWithLogs = new Set(filtered.map((log) => log.project_id).filter((pid) => pid !== null && pid !== undefined))
+    const activeProjects = projectsWithLogs.size
+
+    return { totalLogs, thisWeekCount, thisMonthCount, activeProjects }
   } catch (error) {
-    return { total: 0, thisWeek: 0, thisMonth: 0 }
+    return { totalLogs: 0, thisWeekCount: 0, thisMonthCount: 0, activeProjects: 0 }
   }
 }
