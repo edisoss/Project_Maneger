@@ -1,8 +1,6 @@
-import { redirect } from 'next/navigation'
+import { redirect } from "next/navigation"
 import { createServerClient } from "@/lib/supabase-server"
 import DashboardContent from "@/components/dashboard-content"
-
-export const dynamic = 'force-dynamic'
 
 export default async function DashboardPage() {
   try {

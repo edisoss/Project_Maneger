@@ -1,8 +1,6 @@
-import { redirect } from 'next/navigation'
+import { redirect } from "next/navigation"
 import { createServerClient } from "@/lib/supabase-server"
 import LoginForm from "@/components/login-form"
-
-export const dynamic = 'force-dynamic'
 
 export default async function HomePage() {
   try {

@@ -36,7 +36,25 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Building2, Users, Package, FileText, Settings, LogOut, Shield, ActivityIcon, BarChart3, Loader2, UserPlus, Crown, Edit, Trash2, Eye, Briefcase, Plus } from 'lucide-react'
+import {
+  Building2,
+  Users,
+  Package,
+  FileText,
+  Settings,
+  LogOut,
+  Shield,
+  ActivityIcon,
+  BarChart3,
+  Loader2,
+  UserPlus,
+  Crown,
+  Edit,
+  Trash2,
+  Eye,
+  Briefcase,
+  Plus,
+} from "lucide-react"
 import { createClientClient } from "@/lib/supabase-client"
 import {
   getProjects,
@@ -54,7 +72,6 @@ import {
   getActivities,
   addActivity,
   verifyAndFixCreatorInfo,
-  getDailyLogsStats, // Imported new function
 } from "@/lib/database"
 import type {
   Project,
@@ -69,13 +86,13 @@ import type {
   Activity,
 } from "@/lib/database"
 import { useToast } from "@/hooks/use-toast"
-import { useRouter } from 'next/navigation'
+import { useRouter } from "next/navigation"
 import type { User } from "@supabase/supabase-js"
 
 // Import tab components
 import ProjectsTab from "./projects-tab"
 import WorkersTab from "./workers-tab"
-import MaterialsManagement from "./materials-management"
+import MaterialsTab from "./materials-tab"
 import DailyLogsTab from "./daily-logs-tab"
 import RecentActivities from "./recent-activities"
 
@@ -99,9 +116,6 @@ export default function DashboardContent({ user }: DashboardContentProps) {
   const [isAdmin, setIsAdmin] = useState(false) // Default to false, check from profile
   const [userProfile, setUserProfile] = useState<Profile | null>(null)
 
-  // State for active tab management
-  const [activeTab, setActiveTab] = useState("overview")
-
   // User management states
   const [showAddUserDialog, setShowAddUserDialog] = useState(false)
   const [showEditUserDialog, setShowEditUserDialog] = useState(false)
@@ -123,11 +137,6 @@ export default function DashboardContent({ user }: DashboardContentProps) {
   const [updatingUser, setUpdatingUser] = useState(false)
   const [deletingUser, setDeletingUser] = useState(false)
 
-  // State for stats loading
-  const [statsLoading, setStatsLoading] = useState(true)
-  const [logsStats, setLogsStats] = useState({ total: 0, thisWeek: 0, thisMonth: 0 })
-
-
   const { toast } = useToast()
   const router = useRouter()
 
@@ -135,22 +144,6 @@ export default function DashboardContent({ user }: DashboardContentProps) {
   useEffect(() => {
     loadAllData()
   }, [])
-
-  useEffect(() => {
-    const loadStats = async () => {
-      try {
-        const stats = await getDailyLogsStats()
-        setLogsStats(stats)
-      } catch (error) {
-        setLogsStats({ total: 0, thisWeek: 0, thisMonth: 0 })
-      } finally {
-        setStatsLoading(false)
-      }
-    }
-
-    loadStats()
-  }, [])
-
 
   const loadAllData = async () => {
     try {
@@ -492,20 +485,12 @@ export default function DashboardContent({ user }: DashboardContentProps) {
   const activeWorkers = workers.filter((w) => w.status === "Active").length
   const totalMaterials = materials.length
   const lowStockMaterials = materials.filter((m) => m.current_stock <= m.min_stock).length
-  // Removed these as they're now fetched separately and stored in logsStats
-  // const thisWeekLogs = dailyLogs.filter((log) => {
-  //   const logDate = new Date(log.date)
-  //   const weekAgo = new Date()
-  //   weekAgo.setDate(weekAgo.getDate() - 7)
-  //   return logDate >= weekAgo
-  // }).length
-
-  // const thisMonthLogs = dailyLogs.filter((log) => {
-  //   const logDate = new Date(log.date)
-  //   const monthAgo = new Date()
-  //   monthAgo.setMonth(monthAgo.getMonth() - 1)
-  //   return logDate >= monthAgo
-  // }).length
+  const thisWeekLogs = dailyLogs.filter((log) => {
+    const logDate = new Date(log.date)
+    const weekAgo = new Date()
+    weekAgo.setDate(weekAgo.getDate() - 7)
+    return logDate >= weekAgo
+  }).length
 
   // Get user role for permission checks
   const userRole = userProfile?.role || "user"
@@ -604,7 +589,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
 
       {/* Main Content */}
       <main className="p-6">
-        <Tabs defaultValue="overview" className="space-y-6" value={activeTab} onValueChange={setActiveTab}>
+        <Tabs defaultValue="overview" className="space-y-6">
           <TabsList className="grid w-full grid-cols-5 bg-white/60 backdrop-blur-sm border border-gray-200 rounded-xl p-1">
             <TabsTrigger
               value="overview"
@@ -678,10 +663,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
 
             {/* Statistics Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <Card
-                className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 hover:shadow-lg transition-all duration-200 cursor-pointer"
-                onClick={() => setActiveTab("projects")}
-              >
+              <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 hover:shadow-lg transition-all duration-200">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium text-blue-700">Total Projects</CardTitle>
                   <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
@@ -694,10 +676,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                 </CardContent>
               </Card>
 
-              <Card
-                className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 hover:shadow-lg transition-all duration-200 cursor-pointer"
-                onClick={() => setActiveTab("workers")}
-              >
+              <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 hover:shadow-lg transition-all duration-200">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium text-green-700">Team Members</CardTitle>
                   <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center">
@@ -710,10 +689,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                 </CardContent>
               </Card>
 
-              <Card
-                className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200 hover:shadow-lg transition-all duration-200 cursor-pointer"
-                onClick={() => setActiveTab("materials")}
-              >
+              <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200 hover:shadow-lg transition-all duration-200">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium text-orange-700">Materials</CardTitle>
                   <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center">
@@ -726,19 +702,16 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                 </CardContent>
               </Card>
 
-              <Card
-                className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200 hover:shadow-lg transition-all duration-200 cursor-pointer"
-                onClick={() => setActiveTab("daily-logs")}
-              >
+              <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200 hover:shadow-lg transition-all duration-200">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-purple-700">Total Logs</CardTitle>
+                  <CardTitle className="text-sm font-medium text-purple-700">This Week</CardTitle>
                   <div className="w-8 h-8 bg-purple-500 rounded-lg flex items-center justify-center">
                     <FileText className="h-4 w-4 text-white" />
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-purple-900">{logsStats.total}</div>
-                  <p className="text-xs text-purple-600 mt-1">{logsStats.thisWeek} this week | {logsStats.thisMonth} this month</p>
+                  <div className="text-2xl font-bold text-purple-900">{thisWeekLogs}</div>
+                  <p className="text-xs text-purple-600 mt-1">daily logs submitted</p>
                 </CardContent>
               </Card>
             </div>
@@ -776,7 +749,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                   <CardContent className="space-y-4">
                     <div className="flex items-center justify-between p-3 bg-gradient-to-r from-amber-50 to-yellow-50 rounded-lg border border-amber-200">
                       <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center">
+                        <div className="w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center">
                           <Crown className="h-4 w-4 text-white" />
                         </div>
                         <div>
@@ -997,7 +970,16 @@ export default function DashboardContent({ user }: DashboardContentProps) {
           </TabsContent>
 
           <TabsContent value="materials">
-            <MaterialsManagement />
+            <MaterialsTab
+              materials={materials}
+              setMaterials={setMaterials}
+              materialCategories={materialCategories}
+              setMaterialCategories={setMaterialCategories}
+              materialLocations={materialLocations}
+              setMaterialLocations={setMaterialLocations}
+              logActivity={logActivity}
+              isAdmin={isAdmin}
+            />
           </TabsContent>
 
           <TabsContent value="daily-logs">
