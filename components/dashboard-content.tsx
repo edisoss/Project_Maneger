@@ -997,7 +997,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
           </TabsContent>
 
           <TabsContent value="materials">
-            <MaterialsManagement />
+            <MaterialsManagement isAdmin={isAdmin} />
           </TabsContent>
 
           <TabsContent value="daily-logs">

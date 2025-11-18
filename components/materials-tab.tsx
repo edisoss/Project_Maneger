@@ -27,28 +27,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import {
-  Plus,
-  Edit,
-  Trash2,
-  Package,
-  AlertTriangle,
-  CheckCircle,
-  Settings,
-  Loader2,
-  Search,
-  History,
-  Calendar,
-  RotateCcw,
-  Eye,
-  RefreshCw,
-  PackageOpen,
-  PackagePlus,
-  User,
-  FileText,
-  Building,
-  ArrowRight,
-} from "lucide-react"
+import { Plus, Edit, Trash2, Package, AlertTriangle, CheckCircle, Settings, Loader2, Search, History, Calendar, RotateCcw, Eye, RefreshCw, PackageOpen, PackagePlus, User, FileText, Building, ArrowRight } from 'lucide-react'
 import {
   addMaterial,
   updateMaterial,
@@ -964,9 +943,11 @@ export default function MaterialsTab({
                     </TableCell>
                     <TableCell>
                       <div className="flex space-x-2">
-                        <Button variant="outline" size="sm" onClick={() => handleTopUp(material)}>
-                          <Plus className="h-3 w-3" />
-                        </Button>
+                        {isAdmin && (
+                          <Button variant="outline" size="sm" onClick={() => handleTopUp(material)}>
+                            <Plus className="h-3 w-3" />
+                          </Button>
+                        )}
                         <Button variant="outline" size="sm" onClick={() => handleView(material)}>
                           <Eye className="h-3 w-3" />
                         </Button>
