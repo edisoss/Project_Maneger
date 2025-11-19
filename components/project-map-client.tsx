@@ -6,19 +6,21 @@ import "leaflet/dist/leaflet.css"
 import L from "leaflet"
 import type { Project } from "@/lib/database"
 import { Button } from "@/components/ui/button"
-import { ExternalLink } from "lucide-react"
+import { ExternalLink } from 'lucide-react'
 
 // Fix for default marker icon
-const createIcon = () => {
-  return L.icon({
-    iconUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png",
-    iconRetinaUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png",
-    shadowUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png",
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
-    popupAnchor: [1, -34],
-    shadowSize: [41, 41],
-  })
+const fixLeafletIcon = () => {
+  try {
+    // @ts-ignore
+    delete L.Icon.Default.prototype._getIconUrl
+    L.Icon.Default.mergeOptions({
+      iconRetinaUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png",
+      iconUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png",
+      shadowUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png",
+    })
+  } catch (e) {
+    console.error("Failed to fix Leaflet icon", e)
+  }
 }
 
 interface ProjectMapClientProps {
@@ -27,18 +29,20 @@ interface ProjectMapClientProps {
 
 export default function ProjectMapClient({ projects = [] }: ProjectMapClientProps) {
   const [mounted, setMounted] = useState(false)
-  const [customIcon, setCustomIcon] = useState<L.Icon | null>(null)
 
   useEffect(() => {
+    fixLeafletIcon()
     setMounted(true)
-    setCustomIcon(createIcon())
 
-    setTimeout(() => {
+    // Force resize to ensure map renders correctly
+    const timer = setTimeout(() => {
       window.dispatchEvent(new Event("resize"))
     }, 100)
+
+    return () => clearTimeout(timer)
   }, [])
 
-  if (!mounted || !customIcon) return <div className="h-[500px] bg-gray-100 rounded-lg animate-pulse" />
+  if (!mounted) return <div className="h-[500px] bg-gray-100 rounded-lg animate-pulse" />
 
   // Filter projects with valid coordinates
   const validProjects = Array.isArray(projects)
@@ -59,13 +63,18 @@ export default function ProjectMapClient({ projects = [] }: ProjectMapClientProp
 
   return (
     <div className="h-[500px] rounded-lg overflow-hidden border shadow-sm z-0 relative">
-      <MapContainer center={[centerLat, centerLng]} zoom={10} style={{ height: "100%", width: "100%" }}>
+      <MapContainer
+        key="project-map"
+        center={[centerLat, centerLng]}
+        zoom={10}
+        style={{ height: "100%", width: "100%" }}
+      >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         {validProjects.map((project) => (
-          <Marker key={project.id} position={[project.latitude!, project.longitude!]} icon={customIcon}>
+          <Marker key={project.id} position={[project.latitude!, project.longitude!]}>
             <Popup>
               <div className="p-1">
                 <h3 className="font-bold text-sm mb-1">{project.name}</h3>
