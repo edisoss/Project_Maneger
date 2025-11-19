@@ -119,13 +119,14 @@ export default function DailyLogsTab({
   useEffect(() => {
     const loadPaginatedLogs = async () => {
       const offset = (currentPage - 1) * logsPerPage
-      const logs = await getDailyLogs(logsPerPage, offset)
-      const count = await getDailyLogsCount()
+      const logs = await getDailyLogs(logsPerPage, offset, { dateFilter, projectFilter })
+      const count = await getDailyLogsCount({ dateFilter, projectFilter })
+      // </CHANGE>
       setDailyLogs(logs)
       setTotalLogs(count)
     }
     loadPaginatedLogs()
-  }, [currentPage, setDailyLogs])
+  }, [currentPage, setDailyLogs, dateFilter, projectFilter])
 
   // Effect to reload stats when filters change
   useEffect(() => {

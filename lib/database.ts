@@ -614,7 +614,14 @@ export async function addMaterialTransaction(
 }
 
 // Daily Logs functions
-export async function getDailyLogs(limit?: number, offset?: number): Promise<DailyLog[]> {
+export async function getDailyLogs(
+  limit?: number,
+  offset?: number,
+  filters?: {
+    dateFilter?: { fromDate: string; toDate: string; quickFilter: string }
+    projectFilter?: string
+  },
+): Promise<DailyLog[]> {
   try {
     const supabase = createClientClient()
     if (!supabase) {
@@ -622,6 +629,34 @@ export async function getDailyLogs(limit?: number, offset?: number): Promise<Dai
     }
 
     let query = supabase.from("daily_logs").select("*").order("created_at", { ascending: false })
+
+    if (filters) {
+      const { dateFilter, projectFilter } = filters
+
+      // Project filter
+      if (projectFilter && projectFilter !== "all") {
+        query = query.eq("project_id", projectFilter)
+      }
+
+      // Date filter
+      if (dateFilter) {
+        const { quickFilter, fromDate, toDate } = dateFilter
+        const now = new Date()
+        const today = now.toISOString().split("T")[0]
+
+        if (quickFilter === "today") {
+          query = query.eq("date", today)
+        } else if (quickFilter === "week") {
+          const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
+          query = query.gte("date", weekAgo)
+        } else if (quickFilter === "month") {
+          const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
+          query = query.gte("date", monthAgo)
+        } else if (quickFilter === "custom" && fromDate && toDate) {
+          query = query.gte("date", fromDate).lte("date", toDate)
+        }
+      }
+    }
 
     if (limit) {
       query = query.range(offset || 0, (offset || 0) + limit - 1)
@@ -680,14 +715,47 @@ export async function getDailyLogs(limit?: number, offset?: number): Promise<Dai
   }
 }
 
-export async function getDailyLogsCount(): Promise<number> {
+export async function getDailyLogsCount(filters?: {
+  dateFilter?: { fromDate: string; toDate: string; quickFilter: string }
+  projectFilter?: string
+}): Promise<number> {
   try {
     const supabase = createClientClient()
     if (!supabase) {
       return 0
     }
 
-    const { count, error } = await supabase.from("daily_logs").select("*", { count: "exact", head: true })
+    let query = supabase.from("daily_logs").select("*", { count: "exact", head: true })
+
+    if (filters) {
+      const { dateFilter, projectFilter } = filters
+
+      // Project filter
+      if (projectFilter && projectFilter !== "all") {
+        query = query.eq("project_id", projectFilter)
+      }
+
+      // Date filter
+      if (dateFilter) {
+        const { quickFilter, fromDate, toDate } = dateFilter
+        const now = new Date()
+        const today = now.toISOString().split("T")[0]
+
+        if (quickFilter === "today") {
+          query = query.eq("date", today)
+        } else if (quickFilter === "week") {
+          const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
+          query = query.gte("date", weekAgo)
+        } else if (quickFilter === "month") {
+          const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
+          query = query.gte("date", monthAgo)
+        } else if (quickFilter === "custom" && fromDate && toDate) {
+          query = query.gte("date", fromDate).lte("date", toDate)
+        }
+      }
+    }
+
+    const { count, error } = await query
 
     if (error) {
       return 0
@@ -1648,7 +1716,10 @@ export async function getMaterialTransfers(materialId?: string): Promise<Materia
   }
 }
 
-export async function getDailyLogsStats(): Promise<{
+export async function getDailyLogsStats(filters?: {
+  dateFilter?: { fromDate: string; toDate: string; quickFilter: string }
+  projectFilter?: string
+}): Promise<{
   totalLogs: number
   thisWeekCount: number
   thisMonthCount: number
@@ -1661,10 +1732,37 @@ export async function getDailyLogsStats(): Promise<{
     }
 
     // Get all logs to calculate statistics
-    const { data: allLogs, error } = await supabase
-      .from("daily_logs")
-      .select("date, project_id")
-      .order("created_at", { ascending: false })
+    let query = supabase.from("daily_logs").select("date, project_id").order("created_at", { ascending: false })
+
+    if (filters) {
+      const { dateFilter, projectFilter } = filters
+
+      // Project filter
+      if (projectFilter && projectFilter !== "all") {
+        query = query.eq("project_id", projectFilter)
+      }
+
+      // Date filter
+      if (dateFilter) {
+        const { quickFilter, fromDate, toDate } = dateFilter
+        const now = new Date()
+        const today = now.toISOString().split("T")[0]
+
+        if (quickFilter === "today") {
+          query = query.eq("date", today)
+        } else if (quickFilter === "week") {
+          const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
+          query = query.gte("date", weekAgo)
+        } else if (quickFilter === "month") {
+          const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
+          query = query.gte("date", monthAgo)
+        } else if (quickFilter === "custom" && fromDate && toDate) {
+          query = query.gte("date", fromDate).lte("date", toDate)
+        }
+      }
+    }
+
+    const { data: allLogs, error } = await query
 
     if (error || !allLogs) {
       return { totalLogs: 0, thisWeekCount: 0, thisMonthCount: 0, activeProjects: 0 }
