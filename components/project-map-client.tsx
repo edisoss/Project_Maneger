@@ -6,7 +6,7 @@ import "leaflet/dist/leaflet.css"
 import L from "leaflet"
 import type { Project } from "@/lib/database"
 import { Button } from "@/components/ui/button"
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink } from "lucide-react"
 
 // Fix for default marker icon
 const createIcon = () => {
@@ -32,6 +32,10 @@ export default function ProjectMapClient({ projects = [] }: ProjectMapClientProp
   useEffect(() => {
     setMounted(true)
     setCustomIcon(createIcon())
+
+    setTimeout(() => {
+      window.dispatchEvent(new Event("resize"))
+    }, 100)
   }, [])
 
   if (!mounted || !customIcon) return <div className="h-[500px] bg-gray-100 rounded-lg animate-pulse" />
