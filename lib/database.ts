@@ -74,6 +74,9 @@ export interface Project {
   start_date: string
   end_date: string
   progress: number
+  location: string
+  latitude?: number
+  longitude?: number
   created_at: string
   updated_at: string
 }
@@ -145,6 +148,17 @@ export interface Activity {
   created_by?: string
   created_at: string
   updated_at: string
+}
+
+export interface Document {
+  id: string
+  project_id: string
+  name: string
+  url: string
+  type: string
+  size: number
+  uploaded_by: string
+  created_at: string
 }
 
 /**
@@ -1794,5 +1808,52 @@ export async function getDailyLogsStats(filters?: {
     return { totalLogs, thisWeekCount, thisMonthCount, activeProjects }
   } catch (error) {
     return { totalLogs: 0, thisWeekCount: 0, thisMonthCount: 0, activeProjects: 0 }
+  }
+}
+
+// Documents functions
+export async function getDocuments(projectId: string): Promise<Document[]> {
+  try {
+    const supabase = createClientClient()
+    if (!supabase) return []
+
+    const { data, error } = await supabase
+      .from("documents")
+      .select("*")
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: false })
+
+    if (error) return []
+    return data || []
+  } catch (error) {
+    return []
+  }
+}
+
+export async function addDocument(doc: Omit<Document, "id" | "created_at">): Promise<Document | null> {
+  try {
+    const supabase = createClientClient()
+    if (!supabase) return null
+
+    const { data, error } = await supabase.from("documents").insert([doc]).select().single()
+
+    if (error) return null
+    return data
+  } catch (error) {
+    return null
+  }
+}
+
+export async function deleteDocument(id: string): Promise<boolean> {
+  try {
+    const supabase = createClientClient()
+    if (!supabase) return false
+
+    const { error } = await supabase.from("documents").delete().eq("id", id)
+
+    if (error) return false
+    return true
+  } catch (error) {
+    return false
   }
 }

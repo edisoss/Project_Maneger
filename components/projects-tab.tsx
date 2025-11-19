@@ -28,10 +28,18 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Plus, Edit, Trash2, Building2, Calendar, MapPin, TrendingUp, Loader2, Eye } from "lucide-react"
-import { addProject, updateProject, deleteProject } from "@/lib/database"
-import type { Project } from "@/lib/database"
+import { Plus, Edit, Trash2, Building2, Calendar, MapPin, TrendingUp, Loader2, Eye, MapIcon, List, FileText, Upload, Download, X } from 'lucide-react'
+import { addProject, updateProject, deleteProject, getDocuments, addDocument, deleteDocument } from "@/lib/database"
+import type { Project, Document } from "@/lib/database"
 import { useToast } from "@/hooks/use-toast"
+import dynamic from "next/dynamic"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+
+// Dynamically import the map component to avoid SSR issues with Leaflet
+const ProjectMap = dynamic(() => import("./project-map"), {
+  ssr: false,
+  loading: () => <div className="h-[400px] bg-gray-100 rounded-lg animate-pulse" />,
+})
 
 interface ProjectsTabProps {
   projects: Project[]
@@ -45,7 +53,10 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
   const [showEditDialog, setShowEditDialog] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showViewDialog, setShowViewDialog] = useState(false)
+  const [viewMode, setViewMode] = useState<"list" | "map">("list")
   const [selectedProject, setSelectedProject] = useState<Project | null>(null)
+  const [projectDocuments, setProjectDocuments] = useState<Document[]>([])
+  const [uploading, setUploading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const { toast } = useToast()
@@ -55,6 +66,8 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
     description: "",
     type: "",
     location: "",
+    latitude: 0,
+    longitude: 0,
     status: "Planning",
     start_date: "",
     end_date: "",
@@ -70,6 +83,8 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
       description: "",
       type: projectTypes[0],
       location: "",
+      latitude: 0,
+      longitude: 0,
       status: "Planning",
       start_date: "",
       end_date: "",
@@ -90,7 +105,14 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
         return
       }
 
-      const newProject = await addProject(formData)
+      // Ensure lat/lng are numbers
+      const projectData = {
+        ...formData,
+        latitude: Number(formData.latitude) || 0,
+        longitude: Number(formData.longitude) || 0,
+      }
+
+      const newProject = await addProject(projectData)
       if (!newProject) {
         toast({ title: "Error", description: "Failed to add project.", variant: "destructive" })
         return
@@ -123,6 +145,8 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
       description: project.description,
       type: project.type,
       location: project.location,
+      latitude: project.latitude || 0,
+      longitude: project.longitude || 0,
       status: project.status,
       start_date: project.start_date,
       end_date: project.end_date,
@@ -131,9 +155,70 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
     setShowEditDialog(true)
   }
 
-  const handleView = (project: Project) => {
+  const handleView = async (project: Project) => {
     setSelectedProject(project)
     setShowViewDialog(true)
+    // Fetch documents
+    const docs = await getDocuments(project.id)
+    setProjectDocuments(docs)
+  }
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0 || !selectedProject) return
+
+    const file = e.target.files[0]
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ title: "Error", description: "File size must be less than 10MB", variant: "destructive" })
+      return
+    }
+
+    try {
+      setUploading(true)
+      const formData = new FormData()
+      formData.append("file", file)
+
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      })
+
+      if (!response.ok) throw new Error("Upload failed")
+
+      const { url } = await response.json()
+
+      const newDoc = await addDocument({
+        project_id: selectedProject.id,
+        name: file.name,
+        url,
+        type: file.type,
+        size: file.size,
+        uploaded_by: "admin@company.com", // In a real app, get current user
+      })
+
+      if (newDoc) {
+        setProjectDocuments([newDoc, ...projectDocuments])
+        toast({ title: "Success", description: "File uploaded successfully" })
+      }
+    } catch (error) {
+      console.error("Upload error:", error)
+      toast({ title: "Error", description: "Failed to upload file", variant: "destructive" })
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleDeleteDocument = async (docId: string) => {
+    try {
+      const success = await deleteDocument(docId)
+      if (success) {
+        setProjectDocuments(projectDocuments.filter((d) => d.id !== docId))
+        toast({ title: "Success", description: "File deleted successfully" })
+      } else {
+        throw new Error("Delete failed")
+      }
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to delete file", variant: "destructive" })
+    }
   }
 
   const handleUpdateProject = async () => {
@@ -150,7 +235,14 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
         return
       }
 
-      const updatedProject = await updateProject(selectedProject.id, formData)
+      // Ensure lat/lng are numbers
+      const projectData = {
+        ...formData,
+        latitude: Number(formData.latitude) || 0,
+        longitude: Number(formData.longitude) || 0,
+      }
+
+      const updatedProject = await updateProject(selectedProject.id, projectData)
       if (!updatedProject) {
         toast({ title: "Error", description: "Failed to update project.", variant: "destructive" })
         return
@@ -250,145 +342,191 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
             {!isAdmin && " (View Only)"}
           </p>
         </div>
-        {isAdmin && (
-          <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-            <DialogTrigger asChild>
-              <Button
-                onClick={() => {
-                  resetForm()
-                  setShowAddDialog(true)
-                }}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Project
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>Add New Project</DialogTitle>
-                <DialogDescription>Create a new construction project</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="name">Project Name *</Label>
-                    <Input
-                      id="name"
-                      placeholder="Enter project name"
-                      value={formData.name}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="type">Project Type</Label>
-                    <Select
-                      value={formData.type}
-                      onValueChange={(value) => setFormData((prev) => ({ ...prev, type: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {projectTypes.map((type) => (
-                          <SelectItem key={type} value={type}>
-                            {type}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div>
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea
-                    id="description"
-                    placeholder="Enter project description"
-                    value={formData.description}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
-                    rows={3}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="location">Location *</Label>
-                  <Input
-                    id="location"
-                    placeholder="Enter project location"
-                    value={formData.location}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, location: e.target.value }))}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="start_date">Start Date *</Label>
-                    <Input
-                      id="start_date"
-                      type="date"
-                      value={formData.start_date}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, start_date: e.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="end_date">End Date</Label>
-                    <Input
-                      id="end_date"
-                      type="date"
-                      value={formData.end_date}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, end_date: e.target.value }))}
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="status">Status</Label>
-                    <Select
-                      value={formData.status}
-                      onValueChange={(value) => setFormData((prev) => ({ ...prev, status: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {statusOptions.map((status) => (
-                          <SelectItem key={status} value={status}>
-                            {status}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label htmlFor="progress">Progress (%)</Label>
-                    <Input
-                      id="progress"
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={formData.progress}
-                      onChange={(e) =>
-                        setFormData((prev) => ({ ...prev, progress: Number.parseInt(e.target.value) || 0 }))
-                      }
-                    />
-                  </div>
-                </div>
-              </div>
-              <div className="flex justify-end space-x-2">
-                <Button variant="outline" onClick={() => setShowAddDialog(false)} disabled={saving}>
-                  Cancel
+        <div className="flex items-center space-x-2">
+          <div className="bg-muted p-1 rounded-lg flex">
+            <Button
+              variant={viewMode === "list" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setViewMode("list")}
+              className="h-8"
+            >
+              <List className="h-4 w-4 mr-2" />
+              List
+            </Button>
+            <Button
+              variant={viewMode === "map" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setViewMode("map")}
+              className="h-8"
+            >
+              <MapIcon className="h-4 w-4 mr-2" />
+              Map
+            </Button>
+          </div>
+          {isAdmin && (
+            <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+              <DialogTrigger asChild>
+                <Button
+                  onClick={() => {
+                    resetForm()
+                    setShowAddDialog(true)
+                  }}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Project
                 </Button>
-                <Button onClick={handleAddProject} disabled={saving}>
-                  {saving ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Adding...
-                    </>
-                  ) : (
-                    "Add Project"
-                  )}
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-        )}
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>Add New Project</DialogTitle>
+                  <DialogDescription>Create a new construction project</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="name">Project Name *</Label>
+                      <Input
+                        id="name"
+                        placeholder="Enter project name"
+                        value={formData.name}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="type">Project Type</Label>
+                      <Select
+                        value={formData.type}
+                        onValueChange={(value) => setFormData((prev) => ({ ...prev, type: value }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {projectTypes.map((type) => (
+                            <SelectItem key={type} value={type}>
+                              {type}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="description">Description</Label>
+                    <Textarea
+                      id="description"
+                      placeholder="Enter project description"
+                      value={formData.description}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
+                      rows={3}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="location">Location *</Label>
+                    <Input
+                      id="location"
+                      placeholder="Enter project location"
+                      value={formData.location}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, location: e.target.value }))}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="latitude">Latitude</Label>
+                      <Input
+                        id="latitude"
+                        type="number"
+                        step="any"
+                        placeholder="e.g. 40.7128"
+                        value={formData.latitude}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, latitude: Number(e.target.value) }))}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="longitude">Longitude</Label>
+                      <Input
+                        id="longitude"
+                        type="number"
+                        step="any"
+                        placeholder="e.g. -74.0060"
+                        value={formData.longitude}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, longitude: Number(e.target.value) }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="start_date">Start Date *</Label>
+                      <Input
+                        id="start_date"
+                        type="date"
+                        value={formData.start_date}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, start_date: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="end_date">End Date</Label>
+                      <Input
+                        id="end_date"
+                        type="date"
+                        value={formData.end_date}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, end_date: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="status">Status</Label>
+                      <Select
+                        value={formData.status}
+                        onValueChange={(value) => setFormData((prev) => ({ ...prev, status: value }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {statusOptions.map((status) => (
+                            <SelectItem key={status} value={status}>
+                              {status}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="progress">Progress (%)</Label>
+                      <Input
+                        id="progress"
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={formData.progress}
+                        onChange={(e) =>
+                          setFormData((prev) => ({ ...prev, progress: Number.parseInt(e.target.value) || 0 }))
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="flex justify-end space-x-2">
+                  <Button variant="outline" onClick={() => setShowAddDialog(false)} disabled={saving}>
+                    Cancel
+                  </Button>
+                  <Button onClick={handleAddProject} disabled={saving}>
+                    {saving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Adding...
+                      </>
+                    ) : (
+                      "Add Project"
+                    )}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
+        </div>
       </div>
 
       {/* Statistics Cards */}
@@ -435,152 +573,262 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
         </Card>
       </div>
 
-      {/* Projects Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Construction Projects</CardTitle>
-          <CardDescription>
-            {isAdmin ? "Manage and track your construction projects" : "View construction projects and their progress"}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Project Name</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Location</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Progress</TableHead>
-                <TableHead>Timeline</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {projects.map((project) => (
-                <TableRow key={project.id}>
-                  <TableCell>
-                    <div>
-                      <div className="font-medium">{project.name}</div>
-                      <div className="text-sm text-gray-500 truncate max-w-xs">{project.description}</div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{project.type}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center">
-                      <MapPin className="h-4 w-4 mr-2 text-gray-400" />
-                      {project.location}
-                    </div>
-                  </TableCell>
-                  <TableCell>{getStatusBadge(project.status)}</TableCell>
-                  <TableCell>
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-sm">
-                        <span>{project.progress}%</span>
-                      </div>
-                      <Progress value={project.progress} className="h-2" />
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center text-sm">
-                      <Calendar className="h-4 w-4 mr-2 text-gray-400" />
+      {viewMode === "map" ? (
+        <ProjectMap projects={projects} />
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>Construction Projects</CardTitle>
+            <CardDescription>
+              {isAdmin ? "Manage and track your construction projects" : "View construction projects and their progress"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Project Name</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Location</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Progress</TableHead>
+                  <TableHead>Timeline</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {projects.map((project) => (
+                  <TableRow key={project.id}>
+                    <TableCell>
                       <div>
-                        <div>{new Date(project.start_date).toLocaleDateString()}</div>
-                        {project.end_date && (
-                          <div className="text-gray-500">to {new Date(project.end_date).toLocaleDateString()}</div>
+                        <div className="font-medium">{project.name}</div>
+                        <div className="text-sm text-gray-500 truncate max-w-xs">{project.description}</div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{project.type}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center">
+                        <MapPin className="h-4 w-4 mr-2 text-gray-400" />
+                        {project.location}
+                      </div>
+                    </TableCell>
+                    <TableCell>{getStatusBadge(project.status)}</TableCell>
+                    <TableCell>
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-sm">
+                          <span>{project.progress}%</span>
+                        </div>
+                        <Progress value={project.progress} className="h-2" />
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center text-sm">
+                        <Calendar className="h-4 w-4 mr-2 text-gray-400" />
+                        <div>
+                          <div>{new Date(project.start_date).toLocaleDateString()}</div>
+                          {project.end_date && (
+                            <div className="text-gray-500">to {new Date(project.end_date).toLocaleDateString()}</div>
+                          )}
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex space-x-2">
+                        <Button variant="outline" size="sm" onClick={() => handleView(project)}>
+                          <Eye className="h-3 w-3" />
+                        </Button>
+                        {isAdmin && (
+                          <>
+                            <Button variant="outline" size="sm" onClick={() => handleEdit(project)}>
+                              <Edit className="h-3 w-3" />
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => handleDelete(project)}>
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </>
                         )}
                       </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex space-x-2">
-                      <Button variant="outline" size="sm" onClick={() => handleView(project)}>
-                        <Eye className="h-3 w-3" />
-                      </Button>
-                      {isAdmin && (
-                        <>
-                          <Button variant="outline" size="sm" onClick={() => handleEdit(project)}>
-                            <Edit className="h-3 w-3" />
-                          </Button>
-                          <Button variant="outline" size="sm" onClick={() => handleDelete(project)}>
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          {projects.length === 0 && (
-            <div className="text-center py-8">
-              <p className="text-gray-500">
-                No projects found.{" "}
-                {isAdmin ? "Add your first project to get started!" : "No projects available to view."}
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            {projects.length === 0 && (
+              <div className="text-center py-8">
+                <p className="text-gray-500">
+                  No projects found.{" "}
+                  {isAdmin ? "Add your first project to get started!" : "No projects available to view."}
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* View Dialog */}
       <Dialog open={showViewDialog} onOpenChange={setShowViewDialog}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle>Project Details</DialogTitle>
-            <DialogDescription>View project information</DialogDescription>
+            <DialogDescription>View project information and documents</DialogDescription>
           </DialogHeader>
           {selectedProject && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-sm font-medium">Project Name</Label>
-                  <p className="text-sm text-gray-600">{selectedProject.name}</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium">Type</Label>
-                  <p className="text-sm text-gray-600">{selectedProject.type}</p>
-                </div>
-              </div>
-              <div>
-                <Label className="text-sm font-medium">Description</Label>
-                <p className="text-sm text-gray-600">{selectedProject.description || "No description provided"}</p>
-              </div>
-              <div>
-                <Label className="text-sm font-medium">Location</Label>
-                <p className="text-sm text-gray-600">{selectedProject.location}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-sm font-medium">Start Date</Label>
-                  <p className="text-sm text-gray-600">{new Date(selectedProject.start_date).toLocaleDateString()}</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium">End Date</Label>
-                  <p className="text-sm text-gray-600">
-                    {selectedProject.end_date ? new Date(selectedProject.end_date).toLocaleDateString() : "Not set"}
-                  </p>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-sm font-medium">Status</Label>
-                  <div className="mt-1">{getStatusBadge(selectedProject.status)}</div>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium">Progress</Label>
-                  <div className="mt-2">
-                    <div className="flex justify-between text-sm mb-1">
-                      <span>{selectedProject.progress}%</span>
-                    </div>
-                    <Progress value={selectedProject.progress} className="h-2" />
+            <Tabs defaultValue="details">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="details">Details</TabsTrigger>
+                <TabsTrigger value="documents">Documents</TabsTrigger>
+              </TabsList>
+              <TabsContent value="details" className="space-y-4 mt-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-sm font-medium">Project Name</Label>
+                    <p className="text-sm text-gray-600">{selectedProject.name}</p>
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium">Type</Label>
+                    <p className="text-sm text-gray-600">{selectedProject.type}</p>
                   </div>
                 </div>
-              </div>
-            </div>
+                <div>
+                  <Label className="text-sm font-medium">Description</Label>
+                  <p className="text-sm text-gray-600">{selectedProject.description || "No description provided"}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-sm font-medium">Location</Label>
+                    <p className="text-sm text-gray-600">{selectedProject.location}</p>
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium">Coordinates</Label>
+                    <p className="text-sm text-gray-600">
+                      {selectedProject.latitude && selectedProject.longitude
+                        ? `${selectedProject.latitude}, ${selectedProject.longitude}`
+                        : "Not set"}
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-sm font-medium">Start Date</Label>
+                    <p className="text-sm text-gray-600">{new Date(selectedProject.start_date).toLocaleDateString()}</p>
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium">End Date</Label>
+                    <p className="text-sm text-gray-600">
+                      {selectedProject.end_date ? new Date(selectedProject.end_date).toLocaleDateString() : "Not set"}
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-sm font-medium">Status</Label>
+                    <div className="mt-1">{getStatusBadge(selectedProject.status)}</div>
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium">Progress</Label>
+                    <div className="mt-2">
+                      <div className="flex justify-between text-sm mb-1">
+                        <span>{selectedProject.progress}%</span>
+                      </div>
+                      <Progress value={selectedProject.progress} className="h-2" />
+                    </div>
+                  </div>
+                </div>
+              </TabsContent>
+              <TabsContent value="documents" className="space-y-4 mt-4">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-lg font-medium">Project Documents</h3>
+                  {isAdmin && (
+                    <div className="flex items-center">
+                      <Input
+                        type="file"
+                        id="file-upload"
+                        className="hidden"
+                        onChange={handleFileUpload}
+                        disabled={uploading}
+                      />
+                      <Label
+                        htmlFor="file-upload"
+                        className={`cursor-pointer inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2 ${uploading ? "opacity-50 cursor-not-allowed" : ""}`}
+                      >
+                        {uploading ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Uploading...
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="h-4 w-4 mr-2" />
+                            Upload File
+                          </>
+                        )}
+                      </Label>
+                    </div>
+                  )}
+                </div>
+                <div className="border rounded-md">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Size</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {projectDocuments.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center py-8 text-gray-500">
+                            No documents uploaded yet.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        projectDocuments.map((doc) => (
+                          <TableRow key={doc.id}>
+                            <TableCell className="font-medium">
+                              <div className="flex items-center">
+                                <FileText className="h-4 w-4 mr-2 text-blue-500" />
+                                {doc.name}
+                              </div>
+                            </TableCell>
+                            <TableCell>{doc.type.split("/")[1] || doc.type}</TableCell>
+                            <TableCell>{(doc.size / 1024).toFixed(1)} KB</TableCell>
+                            <TableCell>{new Date(doc.created_at).toLocaleDateString()}</TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end space-x-2">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => window.open(doc.url, "_blank")}
+                                  title="Download"
+                                >
+                                  <Download className="h-4 w-4" />
+                                </Button>
+                                {isAdmin && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDeleteDocument(doc.id)}
+                                    title="Delete"
+                                    className="text-red-500 hover:text-red-700"
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </TabsContent>
+            </Tabs>
           )}
           <div className="flex justify-end">
             <Button onClick={() => setShowViewDialog(false)}>Close</Button>
@@ -644,6 +892,30 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
                   value={formData.location}
                   onChange={(e) => setFormData((prev) => ({ ...prev, location: e.target.value }))}
                 />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="edit-latitude">Latitude</Label>
+                  <Input
+                    id="edit-latitude"
+                    type="number"
+                    step="any"
+                    placeholder="e.g. 40.7128"
+                    value={formData.latitude}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, latitude: Number(e.target.value) }))}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-longitude">Longitude</Label>
+                  <Input
+                    id="edit-longitude"
+                    type="number"
+                    step="any"
+                    placeholder="e.g. -74.0060"
+                    value={formData.longitude}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, longitude: Number(e.target.value) }))}
+                  />
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>

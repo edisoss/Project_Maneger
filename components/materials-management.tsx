@@ -43,6 +43,7 @@ import {
   type MaterialLocation, // Added import
 } from "@/lib/database"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { MaterialPDFExport } from "./material-pdf-export"
 
 interface MaterialsManagementProps {
   isAdmin?: boolean
@@ -614,18 +615,21 @@ export default function MaterialsManagement({ isAdmin = false }: MaterialsManage
                 Select a location to view and manage materials. Start with Storage to see unassigned materials.
               </CardDescription>
             </div>
-            {isAdmin && (
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setCategoriesDialogOpen(true)} className="bg-white/50 hover:bg-white">
-                  <Settings className="h-4 w-4 mr-2" />
-                  Manage Categories
-                </Button>
-                <Button onClick={() => setAddDialogOpen(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Material
-                </Button>
-              </div>
-            )}
+            <div className="flex gap-2">
+              <MaterialPDFExport materials={materials} projects={projects} />
+              {isAdmin && (
+                <>
+                  <Button variant="outline" onClick={() => setCategoriesDialogOpen(true)} className="bg-white/50 hover:bg-white">
+                    <Settings className="h-4 w-4 mr-2" />
+                    Manage Categories
+                  </Button>
+                  <Button onClick={() => setAddDialogOpen(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Material
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -634,7 +638,7 @@ export default function MaterialsManagement({ isAdmin = false }: MaterialsManage
               Select Location
             </Label>
             <Select value={selectedLocation} onValueChange={setSelectedLocation}>
-              <SelectTrigger id="location" className="w-full h-12 text-base bg-white">
+              <SelectTrigger className="w-full h-12 text-base bg-white">
                 <SelectValue>
                   <div className="flex items-center">
                     {selectedLocation === "storage" ? (
