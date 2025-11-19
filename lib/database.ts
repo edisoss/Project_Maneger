@@ -628,7 +628,11 @@ export async function getDailyLogs(
       return []
     }
 
-    let query = supabase.from("daily_logs").select("*").order("created_at", { ascending: false })
+    let query = supabase
+      .from("daily_logs")
+      .select("*")
+      .order("date", { ascending: false })
+      .order("created_at", { ascending: false })
 
     if (filters) {
       const { dateFilter, projectFilter } = filters
