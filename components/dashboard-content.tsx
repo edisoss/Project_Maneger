@@ -36,7 +36,25 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Building2, Users, Package, FileText, Settings, LogOut, Shield, ActivityIcon, BarChart3, Loader2, UserPlus, Crown, Edit, Trash2, Eye, Briefcase, Plus } from 'lucide-react'
+import {
+  Building2,
+  Users,
+  Package,
+  FileText,
+  Settings,
+  LogOut,
+  Shield,
+  ActivityIcon,
+  BarChart3,
+  Loader2,
+  UserPlus,
+  Crown,
+  Edit,
+  Trash2,
+  Eye,
+  Briefcase,
+  Plus,
+} from "lucide-react"
 import { createClientClient } from "@/lib/supabase-client"
 import {
   getProjects,
@@ -69,7 +87,7 @@ import type {
   Activity,
 } from "@/lib/database"
 import { useToast } from "@/hooks/use-toast"
-import { useRouter } from 'next/navigation'
+import { useRouter } from "next/navigation"
 import type { User } from "@supabase/supabase-js"
 
 // Import tab components
@@ -122,11 +140,11 @@ export default function DashboardContent({ user }: DashboardContentProps) {
   const [creatingUser, setCreatingUser] = useState(false)
   const [updatingUser, setUpdatingUser] = useState(false)
   const [deletingUser, setDeletingUser] = useState(false)
+  const [selectedLogId, setSelectedLogId] = useState<string | null>(null) // Add state for selected log
 
   // State for stats loading
   const [statsLoading, setStatsLoading] = useState(true)
   const [logsStats, setLogsStats] = useState({ total: 0, thisWeek: 0, thisMonth: 0 })
-
 
   const { toast } = useToast()
   const router = useRouter()
@@ -151,12 +169,9 @@ export default function DashboardContent({ user }: DashboardContentProps) {
     loadStats()
   }, [])
 
-
   const loadAllData = async () => {
     try {
       setLoading(true)
-      console.log("Loading all data...")
-      console.log("Current user:", { id: user.id, email: user.email })
 
       // Verify creator info for debugging
       await verifyAndFixCreatorInfo()
@@ -185,19 +200,6 @@ export default function DashboardContent({ user }: DashboardContentProps) {
         getActivities(),
       ])
 
-      console.log("Data loaded:", {
-        projects: projectsData.length,
-        workers: workersData.length,
-        materials: materialsData.length,
-        dailyLogs: dailyLogsData.length,
-        roles: rolesData.length,
-        skills: skillsData.length,
-        categories: categoriesData.length,
-        locations: locationsData.length,
-        profiles: profilesData.length,
-        activities: activitiesData.length,
-      })
-
       setProjects(projectsData)
       setWorkers(workersData)
       setMaterials(materialsData)
@@ -209,48 +211,26 @@ export default function DashboardContent({ user }: DashboardContentProps) {
       setProfiles(profilesData)
       setActivities(activitiesData)
 
-      // Debug: Log all profiles to see what we have
-      console.log(
-        "All profiles:",
-        profilesData.map((p) => ({ id: p.id, email: p.email, role: p.role, is_admin: p.is_admin })),
-      )
-
-      // Check if current user is admin - try multiple matching strategies
       let currentUserProfile = null
 
       // Strategy 1: Match by email (most reliable)
       if (user.email) {
         currentUserProfile = profilesData.find((p) => p.email?.toLowerCase() === user.email?.toLowerCase())
-        console.log("Email match attempt:", { userEmail: user.email, found: !!currentUserProfile })
       }
 
       // Strategy 2: Match by auth user ID (if profile.id matches auth.users.id)
       if (!currentUserProfile && user.id) {
         currentUserProfile = profilesData.find((p) => p.id === user.id)
-        console.log("ID match attempt:", { userId: user.id, found: !!currentUserProfile })
       }
 
       if (currentUserProfile) {
         setUserProfile(currentUserProfile)
         const adminStatus = currentUserProfile.is_admin === true || currentUserProfile.role === "admin"
         setIsAdmin(adminStatus)
-        console.log("User profile found:", {
-          id: currentUserProfile.id,
-          email: currentUserProfile.email,
-          role: currentUserProfile.role,
-          is_admin: currentUserProfile.is_admin,
-          computed_admin_status: adminStatus,
-        })
       } else {
         // If no profile found, check if this is the first user (should be admin)
         const shouldBeAdmin = profilesData.length === 0
         setIsAdmin(shouldBeAdmin)
-        console.log(
-          "No user profile found. Profiles count:",
-          profilesData.length,
-          "Setting admin status to:",
-          shouldBeAdmin,
-        )
 
         if (profilesData.length > 0) {
           // There are profiles but current user is not found - this might be an issue
@@ -294,10 +274,8 @@ export default function DashboardContent({ user }: DashboardContentProps) {
 
   const reloadMaterials = async () => {
     try {
-      console.log("Reloading materials data...")
       const materialsData = await getMaterials()
       setMaterials(materialsData)
-      console.log("Materials reloaded successfully:", materialsData.length)
     } catch (error) {
       console.error("Error reloading materials:", error)
     }
@@ -305,10 +283,8 @@ export default function DashboardContent({ user }: DashboardContentProps) {
 
   const reloadActivities = async () => {
     try {
-      console.log("Reloading activities data...")
       const activitiesData = await getActivities()
       setActivities(activitiesData)
-      console.log("Activities reloaded successfully:", activitiesData.length)
     } catch (error) {
       console.error("Error reloading activities:", error)
     }
@@ -324,8 +300,6 @@ export default function DashboardContent({ user }: DashboardContentProps) {
     reference_id?: string
   }) => {
     try {
-      console.log("Logging activity:", activity)
-
       // Save to database - use user.id instead of user.email
       const savedActivity = await addActivity({
         ...activity,
@@ -335,7 +309,6 @@ export default function DashboardContent({ user }: DashboardContentProps) {
       if (savedActivity) {
         // Update local state immediately for better UX
         setActivities((prev) => [savedActivity, ...prev.slice(0, 19)]) // Keep only 20 most recent
-        console.log("Activity logged successfully:", savedActivity.id)
       } else {
         console.error("Failed to save activity to database")
       }
@@ -511,6 +484,12 @@ export default function DashboardContent({ user }: DashboardContentProps) {
   const userRole = userProfile?.role || "user"
   const canAddDailyLogs = isAdmin || userRole === "manager"
 
+  // Function to navigate to a specific daily log
+  const navigateToDailyLog = (logId: string) => {
+    setActiveTab("daily-logs")
+    setSelectedLogId(logId)
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
@@ -603,8 +582,8 @@ export default function DashboardContent({ user }: DashboardContentProps) {
       </header>
 
       {/* Main Content */}
-      <main className="p-6">
-        <Tabs defaultValue="overview" className="space-y-6" value={activeTab} onValueChange={setActiveTab}>
+      <main className="max-w-7xl mx-auto px-6 py-8">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-8">
           <TabsList className="grid w-full grid-cols-5 bg-white/60 backdrop-blur-sm border border-gray-200 rounded-xl p-1">
             <TabsTrigger
               value="overview"
@@ -738,7 +717,9 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-purple-900">{logsStats.total}</div>
-                  <p className="text-xs text-purple-600 mt-1">{logsStats.thisWeek} this week | {logsStats.thisMonth} this month</p>
+                  <p className="text-xs text-purple-600 mt-1">
+                    {logsStats.thisWeek} this week | {logsStats.thisMonth} this month
+                  </p>
                 </CardContent>
               </Card>
             </div>
@@ -996,11 +977,14 @@ export default function DashboardContent({ user }: DashboardContentProps) {
             />
           </TabsContent>
 
-          <TabsContent value="materials">
-            <MaterialsManagement isAdmin={isAdmin} />
+          <TabsContent value="materials" className="space-y-6 mt-6">
+            <MaterialsManagement
+              isAdmin={isAdmin}
+              navigateToDailyLog={navigateToDailyLog} // Pass function
+            />
           </TabsContent>
 
-          <TabsContent value="daily-logs">
+          <TabsContent value="daily-logs" className="space-y-6 mt-6">
             <DailyLogsTab
               dailyLogs={dailyLogs}
               setDailyLogs={setDailyLogs}
@@ -1011,6 +995,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
               logActivity={logActivity}
               isAdmin={isAdmin}
               userRole={userRole}
+              selectedLogId={selectedLogId} // Pass selected log ID
             />
           </TabsContent>
         </Tabs>

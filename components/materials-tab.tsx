@@ -27,7 +27,28 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Plus, Edit, Trash2, Package, AlertTriangle, CheckCircle, Settings, Loader2, Search, History, Calendar, RotateCcw, Eye, RefreshCw, PackageOpen, PackagePlus, User, FileText, Building, ArrowRight } from 'lucide-react'
+import {
+  Plus,
+  Edit,
+  Trash2,
+  Package,
+  AlertTriangle,
+  CheckCircle,
+  Settings,
+  Loader2,
+  Search,
+  History,
+  Calendar,
+  RotateCcw,
+  Eye,
+  RefreshCw,
+  PackageOpen,
+  PackagePlus,
+  User,
+  FileText,
+  Building,
+  ArrowRight,
+} from "lucide-react"
 import {
   addMaterial,
   updateMaterial,
@@ -111,19 +132,14 @@ export default function MaterialsTab({
   const loadCategoriesAndLocations = async () => {
     try {
       setLoadingCategories(true)
-      console.log("Loading categories and locations...")
 
       const [categoriesData, locationsData] = await Promise.all([getMaterialCategories(), getMaterialLocations()])
-
-      console.log("Categories loaded:", categoriesData)
-      console.log("Locations loaded:", locationsData)
 
       setMaterialCategories(categoriesData)
       setMaterialLocations(locationsData)
 
       // If no categories exist, show a helpful message
       if (categoriesData.length === 0) {
-        console.log("No categories found - you may need to run the SQL script to create default categories")
         toast({
           title: "No Categories Found",
           description: "Please run the SQL script to create default material categories.",
@@ -133,7 +149,6 @@ export default function MaterialsTab({
 
       // If no locations exist, show a helpful message
       if (locationsData.length === 0) {
-        console.log("No locations found - you may need to run the SQL script to create default locations")
         toast({
           title: "No Locations Found",
           description: "Please run the SQL script to create default material locations.",
@@ -192,7 +207,6 @@ export default function MaterialsTab({
       }
 
       // Log activity immediately after successful creation
-      console.log("Logging activity for new material:", newMaterial.name)
       logActivity({
         type: "material",
         title: "Material Added",
@@ -257,7 +271,6 @@ export default function MaterialsTab({
       }
 
       // Log activity immediately after successful update
-      console.log("Logging activity for updated material:", updatedMaterial.name)
       logActivity({
         type: "material",
         title: "Material Updated",
@@ -301,7 +314,6 @@ export default function MaterialsTab({
       }
 
       // Log activity immediately after successful deletion
-      console.log("Logging activity for deleted material:", selectedMaterial.name)
       logActivity({
         type: "material",
         title: "Material Deleted",
@@ -354,10 +366,8 @@ export default function MaterialsTab({
     }
 
     try {
-      console.log("Adding new category:", newCategoryName.trim())
       const newCategory = await addMaterialCategory(newCategoryName.trim())
       if (newCategory) {
-        console.log("Category added successfully:", newCategory)
         setMaterialCategories([...materialCategories, newCategory])
         setNewCategoryName("")
         toast({ title: "Success", description: "Category added successfully!" })
@@ -393,10 +403,8 @@ export default function MaterialsTab({
     }
 
     try {
-      console.log("Adding new location:", newLocationName.trim())
       const newLocation = await addMaterialLocation(newLocationName.trim())
       if (newLocation) {
-        console.log("Location added successfully:", newLocation)
         setMaterialLocations([...materialLocations, newLocation])
         setNewLocationName("")
         toast({ title: "Success", description: "Location added successfully!" })

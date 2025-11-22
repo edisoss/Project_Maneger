@@ -19,6 +19,7 @@ export interface MaterialUsageSummary {
   stockStatus: "In Stock" | "Low Stock" | "Out of Stock"
   estimatedValue: number
   lastTransactionDate?: string
+  usageByProject: Record<string, number>
 }
 
 export interface MaterialReportData {
@@ -82,6 +83,17 @@ export const generateMaterialReport = async (
       .filter((t) => t.transaction_type === "used")
       .reduce((sum, t) => sum + t.quantity, 0)
 
+    const usageByProject: Record<string, number> = {}
+    materialTransactions
+      .filter((t) => t.transaction_type === "used")
+      .forEach((t) => {
+        // Clean up project name if it starts with "Project: "
+        const rawProjectName = t.project || "Unknown Project"
+        const projectName = rawProjectName.startsWith("Project: ") ? rawProjectName.substring(9) : rawProjectName
+
+        usageByProject[projectName] = (usageByProject[projectName] || 0) + t.quantity
+      })
+
     const totalAdded = materialTransactions
       .filter((t) => t.transaction_type === "added")
       .reduce((sum, t) => sum + t.quantity, 0)
@@ -127,6 +139,7 @@ export const generateMaterialReport = async (
       stockStatus: stockStatus as "In Stock" | "Low Stock" | "Out of Stock",
       estimatedValue: material.current_stock * 10, // Placeholder - would need actual pricing data
       lastTransactionDate: lastTransaction?.created_at,
+      usageByProject,
     }
   })
 

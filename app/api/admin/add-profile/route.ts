@@ -16,8 +16,6 @@ function isValidEmail(email: string) {
  */
 export async function POST(request: NextRequest) {
   try {
-    console.log("=== ADD PROFILE API CALLED ===")
-
     // Check environment variables first
     if (!supabaseUrl || !supabaseServiceKey) {
       console.error("Missing environment variables:", {
@@ -33,7 +31,6 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    console.log("Request body:", { ...body, password: "[REDACTED]" })
 
     const { email, full_name, role, password, is_admin } = body
 
@@ -69,7 +66,6 @@ export async function POST(request: NextRequest) {
     }
 
     // 2 – Supabase client (service role) -------------------------------------
-    console.log("Creating Supabase client...")
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: {
         autoRefreshToken: false,
@@ -78,7 +74,6 @@ export async function POST(request: NextRequest) {
     })
 
     // 3 – Check if user already exists ----------------------------------------
-    console.log("Checking if user exists...")
     const { data: existingUsers, error: listError } = await supabase.auth.admin.listUsers()
 
     if (listError) {
@@ -96,10 +91,8 @@ export async function POST(request: NextRequest) {
 
     if (existingUser) {
       userId = existingUser.id
-      console.log("User already exists, reusing ID:", userId)
     } else {
       // 4 – Create new auth user --------------------------------------------
-      console.log("Creating new auth user...")
       const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
         email,
         password,
@@ -131,11 +124,9 @@ export async function POST(request: NextRequest) {
       }
 
       userId = authUser.user.id
-      console.log("Auth user created successfully:", userId)
     }
 
     // 5 – Insert / upsert profile --------------------------------------------
-    console.log("Creating/updating profile...")
     const profileData = {
       id: userId,
       email,
@@ -161,7 +152,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log("Profile created/updated successfully:", profile.id)
     return NextResponse.json({
       success: true,
       profile,

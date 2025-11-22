@@ -18,7 +18,27 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { useToast } from "@/hooks/use-toast"
-import { Package, Warehouse, ArrowRightLeft, Search, Building2, TrendingDown, AlertTriangle, CheckCircle2, Boxes, AlertCircle, Database, Loader2, Edit, Trash2, History, Plus, Minus, Settings } from 'lucide-react'
+import {
+  Package,
+  Warehouse,
+  ArrowRightLeft,
+  Search,
+  Building2,
+  TrendingDown,
+  AlertTriangle,
+  CheckCircle2,
+  Boxes,
+  AlertCircle,
+  Database,
+  Loader2,
+  Edit,
+  Trash2,
+  History,
+  Plus,
+  Minus,
+  Settings,
+  FileText,
+} from "lucide-react"
 import {
   getMaterialsByProject,
   getProjects,
@@ -44,12 +64,14 @@ import {
 } from "@/lib/database"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { MaterialPDFExport } from "./material-pdf-export"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 interface MaterialsManagementProps {
   isAdmin?: boolean
+  navigateToDailyLog?: (logId: string) => void // Add optional prop
 }
 
-export default function MaterialsManagement({ isAdmin = false }: MaterialsManagementProps) {
+export default function MaterialsManagement({ isAdmin = false, navigateToDailyLog }: MaterialsManagementProps) {
   const [materials, setMaterials] = useState<Material[]>([])
   const [projects, setProjects] = useState<Project[]>([])
   const [selectedLocation, setSelectedLocation] = useState<string>("storage")
@@ -75,13 +97,13 @@ export default function MaterialsManagement({ isAdmin = false }: MaterialsManage
     transfers: MaterialTransfer[]
   }>({ transactions: [], transfers: [] })
   const [loadingHistory, setLoadingHistory] = useState(false)
-  
+
   const [materialCategories, setMaterialCategories] = useState<MaterialCategory[]>([])
   const [materialLocations, setMaterialLocations] = useState<MaterialLocation[]>([])
   const [newCategoryName, setNewCategoryName] = useState("")
   const [newLocationName, setNewLocationName] = useState("")
   const [loadingCategories, setLoadingCategories] = useState(false)
-  
+
   const [addForm, setAddForm] = useState({
     name: "",
     description: "",
@@ -97,10 +119,7 @@ export default function MaterialsManagement({ isAdmin = false }: MaterialsManage
 
   async function loadCategoriesAndLocations() {
     try {
-      const [categoriesData, locationsData] = await Promise.all([
-        getMaterialCategories(),
-        getMaterialLocations()
-      ])
+      const [categoriesData, locationsData] = await Promise.all([getMaterialCategories(), getMaterialLocations()])
       setMaterialCategories(categoriesData)
       setMaterialLocations(locationsData)
     } catch (error) {
@@ -116,7 +135,7 @@ export default function MaterialsManagement({ isAdmin = false }: MaterialsManage
 
     try {
       const projectId = addForm.location === "storage" ? null : addForm.location
-      
+
       const newMaterial = await addMaterial({
         name: addForm.name,
         description: addForm.description,
@@ -125,7 +144,7 @@ export default function MaterialsManagement({ isAdmin = false }: MaterialsManage
         min_stock: addForm.min_stock,
         unit: addForm.unit,
         location: addForm.storage_location || "Main Storage",
-        project_id: projectId
+        project_id: projectId,
       })
 
       if (newMaterial) {
@@ -139,7 +158,7 @@ export default function MaterialsManagement({ isAdmin = false }: MaterialsManage
           min_stock: 0,
           unit: "pcs",
           location: "storage",
-          storage_location: ""
+          storage_location: "",
         })
         loadMaterials()
       } else {
@@ -173,7 +192,7 @@ export default function MaterialsManagement({ isAdmin = false }: MaterialsManage
     try {
       const success = await deleteMaterialCategory(id)
       if (success) {
-        setMaterialCategories(materialCategories.filter(c => c.id !== id))
+        setMaterialCategories(materialCategories.filter((c) => c.id !== id))
         toast({ title: "Success", description: "Category deleted" })
       }
     } catch (error) {
@@ -203,14 +222,13 @@ export default function MaterialsManagement({ isAdmin = false }: MaterialsManage
     try {
       const success = await deleteMaterialLocation(id)
       if (success) {
-        setMaterialLocations(materialLocations.filter(l => l.id !== id))
+        setMaterialLocations(materialLocations.filter((l) => l.id !== id))
         toast({ title: "Success", description: "Location deleted" })
       }
     } catch (error) {
       toast({ title: "Error", description: "Failed to delete location", variant: "destructive" })
     }
   }
-
 
   useEffect(() => {
     loadProjects()
@@ -244,16 +262,12 @@ export default function MaterialsManagement({ isAdmin = false }: MaterialsManage
     setLoading(true)
     setMigrationError(false)
     try {
-      console.log("[v0] Loading materials for location:", selectedLocation)
       let materialsData: Material[]
       if (selectedLocation === "storage") {
-        console.log("[v0] Querying materials with project_id = NULL")
         materialsData = await getMaterialsByProject(null)
       } else {
-        console.log("[v0] Querying materials for project:", selectedLocation)
         materialsData = await getMaterialsByProject(selectedLocation)
       }
-      console.log("[v0] Materials loaded:", materialsData.length, materialsData)
       setMaterials(materialsData)
     } catch (error) {
       console.error("[v0] Error loading materials:", error)
@@ -619,7 +633,11 @@ export default function MaterialsManagement({ isAdmin = false }: MaterialsManage
               <MaterialPDFExport materials={materials} projects={projects} />
               {isAdmin && (
                 <>
-                  <Button variant="outline" onClick={() => setCategoriesDialogOpen(true)} className="bg-white/50 hover:bg-white">
+                  <Button
+                    variant="outline"
+                    onClick={() => setCategoriesDialogOpen(true)}
+                    className="bg-white/50 hover:bg-white"
+                  >
                     <Settings className="h-4 w-4 mr-2" />
                     Manage Categories
                   </Button>
@@ -1078,7 +1096,7 @@ export default function MaterialsManagement({ isAdmin = false }: MaterialsManage
       )}
 
       <Dialog open={historyDialogOpen} onOpenChange={setHistoryDialogOpen}>
-        <DialogContent className="sm:max-w-[700px] max-h-[80vh]">
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Material History</DialogTitle>
             <DialogDescription>
@@ -1092,53 +1110,74 @@ export default function MaterialsManagement({ isAdmin = false }: MaterialsManage
               <TabsTrigger value="transfers">Transfers</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="transactions" className="space-y-4 max-h-[400px] overflow-y-auto">
+            <TabsContent value="transactions" className="mt-4">
               {loadingHistory ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                <div className="flex justify-center p-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
                 </div>
-              ) : materialHistory.transactions.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <History className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                  <p>No transactions found</p>
+              ) : materialHistory.transactions.length > 0 ? (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Change</TableHead>
+                        <TableHead>Stock After</TableHead>
+                        <TableHead>Reference</TableHead>
+                        <TableHead>By</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {materialHistory.transactions.map((tx) => {
+                        const details = getTransactionTypeDetails(tx)
+                        return (
+                          <TableRow key={tx.id}>
+                            <TableCell>{new Date(tx.created_at).toLocaleDateString()}</TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={details.badgeVariant}
+                                className={`${details.bgColor} ${details.color} border ${details.borderColor}`}
+                              >
+                                {details.icon && <details.icon className="mr-1 h-3 w-3" />}
+                                {details.label}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className={details.color}>
+                              {tx.transaction_type === "added" || tx.transaction_type === "returned" ? "+" : "-"}
+                              {tx.quantity}
+                            </TableCell>
+                            <TableCell>{tx.new_stock}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm text-muted-foreground">{tx.notes}</span>
+                                {tx.reference_type === "daily_log" && tx.reference_id && navigateToDailyLog && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6"
+                                    onClick={() => {
+                                      setHistoryDialogOpen(false)
+                                      navigateToDailyLog(tx.reference_id!)
+                                    }}
+                                    title="View Daily Log"
+                                  >
+                                    <FileText className="h-4 w-4 text-blue-600" />
+                                  </Button>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-muted-foreground text-sm">
+                              {tx.created_by?.split("@")[0] || "System"}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
                 </div>
               ) : (
-                materialHistory.transactions.map((transaction) => (
-                  <Card key={transaction.id}>
-                    <CardContent className="pt-4">
-                      <div className="flex items-start justify-between">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <Badge
-                              variant={
-                                transaction.transaction_type === "added"
-                                  ? "default"
-                                  : transaction.transaction_type === "used"
-                                    ? "destructive"
-                                    : "secondary"
-                              }
-                            >
-                              {transaction.transaction_type}
-                            </Badge>
-                            <span className="font-medium">{transaction.quantity} units</span>
-                          </div>
-                          <p className="text-sm text-muted-foreground">
-                            {transaction.previous_stock} → {transaction.new_stock}
-                          </p>
-                          {transaction.notes && <p className="text-sm">{transaction.notes}</p>}
-                          {transaction.project && (
-                            <p className="text-xs text-muted-foreground">{transaction.project}</p>
-                          )}
-                        </div>
-                        <div className="text-right text-xs text-muted-foreground">
-                          {new Date(transaction.created_at).toLocaleDateString()}
-                          <br />
-                          {new Date(transaction.created_at).toLocaleTimeString()}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))
+                <div className="text-center py-8 text-muted-foreground">No transaction history found</div>
               )}
             </TabsContent>
 
@@ -1272,15 +1311,27 @@ export default function MaterialsManagement({ isAdmin = false }: MaterialsManage
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="unit">Unit *</Label>
-                  <Select
-                    value={addForm.unit}
-                    onValueChange={(value) => setAddForm({ ...addForm, unit: value })}
-                  >
+                  <Select value={addForm.unit} onValueChange={(value) => setAddForm({ ...addForm, unit: value })}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select unit" />
                     </SelectTrigger>
                     <SelectContent>
-                      {["pcs", "kg", "lbs", "m", "ft", "m²", "ft²", "m³", "ft³", "L", "gal", "tons", "bags", "boxes"].map((unit) => (
+                      {[
+                        "pcs",
+                        "kg",
+                        "lbs",
+                        "m",
+                        "ft",
+                        "m²",
+                        "ft²",
+                        "m³",
+                        "ft³",
+                        "L",
+                        "gal",
+                        "tons",
+                        "bags",
+                        "boxes",
+                      ].map((unit) => (
                         <SelectItem key={unit} value={unit}>
                           {unit}
                         </SelectItem>
@@ -1339,7 +1390,9 @@ export default function MaterialsManagement({ isAdmin = false }: MaterialsManage
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setAddDialogOpen(false)}>Cancel</Button>
+              <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
+                Cancel
+              </Button>
               <Button onClick={handleAddMaterial}>Add Material</Button>
             </DialogFooter>
           </DialogContent>
@@ -1431,4 +1484,55 @@ export default function MaterialsManagement({ isAdmin = false }: MaterialsManage
       )}
     </div>
   )
+}
+
+// Helper function to determine transaction details for badges
+function getTransactionTypeDetails(tx: MaterialTransaction) {
+  switch (tx.transaction_type) {
+    case "added":
+      return {
+        label: "Added",
+        icon: Plus,
+        badgeVariant: "default",
+        bgColor: "bg-green-50",
+        color: "text-green-600",
+        borderColor: "border-green-200",
+      }
+    case "used":
+      return {
+        label: "Used",
+        icon: Minus,
+        badgeVariant: "destructive",
+        bgColor: "bg-red-50",
+        color: "text-red-600",
+        borderColor: "border-red-200",
+      }
+    case "adjusted":
+      return {
+        label: "Adjusted",
+        icon: Settings,
+        badgeVariant: "secondary",
+        bgColor: "bg-blue-50",
+        color: "text-blue-600",
+        borderColor: "border-blue-200",
+      }
+    case "returned":
+      return {
+        label: "Returned",
+        icon: ArrowRightLeft,
+        badgeVariant: "default",
+        bgColor: "bg-yellow-50",
+        color: "text-yellow-600",
+        borderColor: "border-yellow-200",
+      }
+    default:
+      return {
+        label: tx.transaction_type,
+        icon: FileText,
+        badgeVariant: "outline",
+        bgColor: "bg-gray-50",
+        color: "text-gray-600",
+        borderColor: "border-gray-200",
+      }
+  }
 }

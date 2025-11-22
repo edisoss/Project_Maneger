@@ -13,8 +13,6 @@ export async function PUT(request: NextRequest) {
     const body = await request.json()
     const { id, email, full_name, role, password, is_admin } = body
 
-    console.log("Updating profile with data:", { id, email, full_name, role, is_admin })
-
     if (!id || !email || !full_name) {
       return NextResponse.json(
         { error: "Missing required fields: id, email, and full_name are required" },
@@ -34,13 +32,11 @@ export async function PUT(request: NextRequest) {
     const { data: authUser, error: getUserError } = await supabase.auth.admin.getUserById(id)
 
     if (getUserError && getUserError.message !== "User not found") {
-      console.error("Error checking auth user:", getUserError.message)
       return NextResponse.json({ error: `Auth error: ${getUserError.message}` }, { status: 500 })
     }
 
     // Update auth user if exists
     if (authUser?.user) {
-      console.log("Updating auth user...")
       const authUpdateData: any = { email }
       if (password) {
         authUpdateData.password = password
@@ -52,9 +48,6 @@ export async function PUT(request: NextRequest) {
         console.error("Auth user update error:", authUpdateError.message)
         return NextResponse.json({ error: `Auth update failed: ${authUpdateError.message}` }, { status: 500 })
       }
-      console.log("Auth user updated successfully")
-    } else {
-      console.log("Auth user not found, skipping auth update (profile-only update)")
     }
 
     // Update profile in database
@@ -74,8 +67,6 @@ export async function PUT(request: NextRequest) {
       console.error("Profile update error:", profileError.message)
       return NextResponse.json({ error: `Profile update failed: ${profileError.message}` }, { status: 500 })
     }
-
-    console.log("Profile updated successfully:", profile)
 
     return NextResponse.json({ success: true, profile })
   } catch (error) {

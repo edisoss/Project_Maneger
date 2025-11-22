@@ -493,7 +493,15 @@ export async function addMaterial(
   }
 }
 
-export async function updateMaterial(id: string, updates: Partial<Material>): Promise<Material | null> {
+export async function updateMaterial(
+  id: string,
+  updates: Partial<Material>,
+  transactionDetails?: {
+    reference_type?: string
+    reference_id?: string
+    notes?: string
+  },
+): Promise<Material | null> {
   try {
     const supabase = createClientClient()
     if (!supabase) {
@@ -525,8 +533,11 @@ export async function updateMaterial(id: string, updates: Partial<Material>): Pr
         quantity: Math.abs(quantityChange),
         previous_stock: currentMaterial.current_stock,
         new_stock: updates.current_stock,
-        reference_type: "manual_adjustment",
-        notes: `Stock ${quantityChange > 0 ? "increased" : "decreased"} by ${Math.abs(quantityChange)}`,
+        reference_type: transactionDetails?.reference_type || "manual_adjustment",
+        reference_id: transactionDetails?.reference_id, // Add reference ID
+        notes:
+          transactionDetails?.notes ||
+          `Stock ${quantityChange > 0 ? "increased" : "decreased"} by ${Math.abs(quantityChange)}`,
         created_by: "admin@company.com",
       })
     }
@@ -1039,30 +1050,55 @@ export async function updateDailyLog(id: string, updates: Partial<DailyLog>): Pr
         const materialEntry = updates.materials_used.find((m) => m.material_id === materialId)
         const visibleQty = materialEntry?.visible_quantity || 0
 
-        // Record transaction with detailed work description
-        const transactionType = netChange > 0 ? "used" : "returned"
-        const quantity = Math.abs(netChange)
+        const { data: existingTx } = await supabase
+          .from("material_transactions")
+          .select("*")
+          .eq("reference_type", "daily_log")
+          .eq("reference_id", id)
+          .eq("material_id", materialId)
+          .single()
 
-        // Create detailed transaction notes based on the type of change
-        let transactionNotes = ""
-        if (transactionType === "used") {
-          transactionNotes = `Additional material used for work: ${truncatedWorkDescription} (Actual: ${Math.abs(netChange)}, Visible: ${visibleQty})`
+        if (existingTx) {
+          // Update the existing transaction
+          // Recalculate the new_stock for the transaction based on its previous_stock
+          // NOTE: This preserves the integrity of that specific transaction record relative to when it started,
+          // but does NOT update subsequent transactions. This is the requested behavior to "fix original usage".
+          const txNewStock = toInt(existingTx.previous_stock - newActualQty)
+
+          await supabase
+            .from("material_transactions")
+            .update({
+              quantity: newActualQty,
+              new_stock: txNewStock,
+              notes: `Used for work: ${truncatedWorkDescription} (Actual: ${newActualQty}, Visible: ${visibleQty}) - Updated`,
+            })
+            .eq("id", existingTx.id)
         } else {
-          transactionNotes = `Material returned from edited work: ${truncatedWorkDescription} (Actual: ${Math.abs(netChange)}, Visible: ${visibleQty})`
-        }
+          // No existing transaction (e.g. new material added during edit), create a new one
+          const transactionType = netChange > 0 ? "used" : "returned"
+          const quantity = Math.abs(netChange)
 
-        await addMaterialTransaction({
-          material_id: materialId,
-          transaction_type: transactionType,
-          quantity: quantity,
-          previous_stock: currentMaterial.current_stock,
-          new_stock: newStock,
-          reference_type: "daily_log_edit",
-          reference_id: id,
-          project: `Project: ${projectName}`,
-          notes: transactionNotes,
-          created_by: "admin@company.com",
-        })
+          // Create detailed transaction notes
+          let transactionNotes = ""
+          if (transactionType === "used") {
+            transactionNotes = `Additional material used for work: ${truncatedWorkDescription} (Actual: ${Math.abs(netChange)}, Visible: ${visibleQty})`
+          } else {
+            transactionNotes = `Material returned from edited work: ${truncatedWorkDescription} (Actual: ${Math.abs(netChange)}, Visible: ${visibleQty})`
+          }
+
+          await addMaterialTransaction({
+            material_id: materialId,
+            transaction_type: transactionType,
+            quantity: quantity,
+            previous_stock: currentMaterial.current_stock,
+            new_stock: newStock,
+            reference_type: "daily_log", // Use 'daily_log' so it can be found and updated later if edited again
+            reference_id: id,
+            project: `Project: ${projectName}`,
+            notes: transactionNotes,
+            created_by: "admin@company.com",
+          })
+        }
       }
     }
 
@@ -1802,7 +1838,9 @@ export async function getDailyLogsStats(filters?: {
     }).length
 
     // Count unique active projects
-    const projectsWithLogs = new Set(allLogs.map((log) => log.project_id).filter((pid) => pid !== null && pid !== undefined))
+    const projectsWithLogs = new Set(
+      allLogs.map((log) => log.project_id).filter((pid) => pid !== null && pid !== undefined),
+    )
     const activeProjects = projectsWithLogs.size
 
     return { totalLogs, thisWeekCount, thisMonthCount, activeProjects }

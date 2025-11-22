@@ -11,23 +11,16 @@ export async function verifyAndFixCreatorInfo(): Promise<void> {
       return
     }
 
-    console.log("=== VERIFYING CREATOR INFO ===")
-
     // Get current user
     const {
       data: { user },
     } = await supabase.auth.getUser()
     if (!user) {
-      console.log("No authenticated user")
       return
     }
 
-    console.log("Current user:", { id: user.id, email: user.email })
-
     // Check if user exists in profiles
     const { data: profile } = await supabase.from("profiles").select("id, full_name, email").eq("id", user.id).single()
-
-    console.log("User profile:", profile)
 
     // Get logs without proper creator info
     const { data: problematicLogs } = await supabase
@@ -37,10 +30,8 @@ export async function verifyAndFixCreatorInfo(): Promise<void> {
       .order("created_at", { ascending: false })
       .limit(10)
 
-    console.log("Logs with potential creator issues:", problematicLogs?.length)
-
     if (problematicLogs && problematicLogs.length > 0) {
-      console.log("Sample problematic logs:", problematicLogs.slice(0, 3))
+      // Handle problematic logs here
     }
   } catch (error) {
     console.error("Error verifying creator info:", error)

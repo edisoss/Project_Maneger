@@ -273,11 +273,11 @@ export function MaterialPDFExport({ materials, projects }: MaterialPDFExportProp
                 <th className="border border-gray-300 px-4 py-2 text-left">Material</th>
                 <th className="border border-gray-300 px-4 py-2 text-left">Category</th>
                 <th className="border border-gray-300 px-4 py-2 text-right">Current Stock</th>
-                <th className="border border-gray-300 px-4 py-2 text-right">Used</th>
+                <th className="border border-gray-300 px-4 py-2 text-right">Total Used</th>
+                <th className="border border-gray-300 px-4 py-2 text-left">Usage by Project</th>
                 <th className="border border-gray-300 px-4 py-2 text-right">Added</th>
                 <th className="border border-gray-300 px-4 py-2 text-right">Net Usage</th>
                 <th className="border border-gray-300 px-4 py-2 text-center">Status</th>
-                <th className="border border-gray-300 px-4 py-2 text-right">Est. Value</th>
               </tr>
             </thead>
             <tbody>
@@ -293,8 +293,26 @@ export function MaterialPDFExport({ materials, projects }: MaterialPDFExportProp
                   <td className="border border-gray-300 px-4 py-2 text-right">
                     {material.currentStock} {material.unit}
                   </td>
-                  <td className="border border-gray-300 px-4 py-2 text-right text-red-600">
+                  <td className="border border-gray-300 px-4 py-2 text-right text-red-600 font-medium">
                     {material.totalUsed} {material.unit}
+                  </td>
+                  <td className="border border-gray-300 px-4 py-2">
+                    {Object.keys(material.usageByProject).length > 0 ? (
+                      <div className="text-sm space-y-1">
+                        {Object.entries(material.usageByProject).map(([project, amount]) => (
+                          <div key={project} className="flex justify-between">
+                            <span className="text-gray-600 truncate max-w-[150px]" title={project}>
+                              {project}:
+                            </span>
+                            <span className="font-medium">
+                              {amount} {material.unit}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-gray-400 text-sm">-</span>
+                    )}
                   </td>
                   <td className="border border-gray-300 px-4 py-2 text-right text-green-600">
                     {material.totalAdded} {material.unit}
@@ -314,9 +332,6 @@ export function MaterialPDFExport({ materials, projects }: MaterialPDFExportProp
                     >
                       {material.stockStatus}
                     </span>
-                  </td>
-                  <td className="border border-gray-300 px-4 py-2 text-right">
-                    {formatCurrency(material.estimatedValue)}
                   </td>
                 </tr>
               ))}

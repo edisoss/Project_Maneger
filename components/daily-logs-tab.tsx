@@ -30,7 +30,33 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Plus, Edit, Trash2, FileText, Calendar, Users, Package, MapPin, Clock, Loader2, Eye, Filter, X, CheckCircle, AlertCircle, Pause, XCircle, Building, Info, Lock, Unlock, User, Building2, ChevronLeft, ChevronRight } from 'lucide-react'
+import {
+  Plus,
+  Edit,
+  Trash2,
+  FileText,
+  Calendar,
+  Users,
+  Package,
+  MapPin,
+  Clock,
+  Loader2,
+  Eye,
+  Filter,
+  X,
+  CheckCircle,
+  AlertCircle,
+  Pause,
+  XCircle,
+  Building,
+  Info,
+  Lock,
+  Unlock,
+  User,
+  Building2,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react"
 import {
   addDailyLog,
   updateDailyLog,
@@ -54,6 +80,7 @@ interface DailyLogsTabProps {
   logActivity: (activity: Omit<Activity, "id" | "timestamp">) => void
   isAdmin: boolean
   userRole?: string // Add user role prop
+  selectedLogId?: string | null // Add optional prop
 }
 
 export default function DailyLogsTab({
@@ -66,6 +93,7 @@ export default function DailyLogsTab({
   logActivity,
   isAdmin,
   userRole = "user", // Default to user role
+  selectedLogId,
 }: DailyLogsTabProps) {
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [showEditDialog, setShowEditDialog] = useState(false)
@@ -145,6 +173,16 @@ export default function DailyLogsTab({
     }
     loadStats()
   }, [dateFilter, projectFilter])
+
+  // Effect to open selected log
+  useEffect(() => {
+    if (selectedLogId && dailyLogs.length > 0) {
+      const log = dailyLogs.find((l) => l.id === selectedLogId)
+      if (log) {
+        handleView(log)
+      }
+    }
+  }, [selectedLogId, dailyLogs])
 
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split("T")[0],
@@ -377,7 +415,17 @@ export default function DailyLogsTab({
         const material = materials.find((m) => m.id === materialUsed.material_id)
         if (material && materialUsed.actual_quantity > 0) {
           const newStock = Math.max(0, material.current_stock - materialUsed.actual_quantity)
-          await updateMaterial(material.id, { current_stock: newStock })
+
+          // Update material with reference to the daily log
+          await updateMaterial(
+            material.id,
+            { current_stock: newStock },
+            {
+              reference_type: "daily_log",
+              reference_id: newLog.id,
+              notes: `Used in Daily Log - ${newLog.date}`,
+            },
+          )
 
           // Log material usage activity with both quantities
           logActivity({
@@ -434,8 +482,6 @@ export default function DailyLogsTab({
     // Parse workers_present - handle both array and JSON string formats
     let workersPresent: string[] = []
     try {
-      
-
       if (Array.isArray(log.workers_present)) {
         // Convert all to strings for consistent comparison
         workersPresent = log.workers_present.map((id) => String(id))
@@ -448,14 +494,18 @@ export default function DailyLogsTab({
       const matchingWorkers = workers.filter(
         (worker) => workersPresent.includes(String(worker.id)) || workersPresent.includes(worker.id),
       )
-      
     } catch (e) {
       console.error("Error parsing workers_present:", e)
       workersPresent = []
     }
 
     // Parse materials_used - handle both old and new formats
-    let materialsUsed: { material_id: string; actual_quantity: number; visible_quantity: number; source_location: string }[] = []
+    let materialsUsed: {
+      material_id: string
+      actual_quantity: number
+      visible_quantity: number
+      source_location: string
+    }[] = []
     try {
       if (Array.isArray(log.materials_used)) {
         materialsUsed = log.materials_used.map((material) => ({
@@ -512,7 +562,7 @@ export default function DailyLogsTab({
     })
     // Set initial selected locations based on the materials used in the log
     const initialLocations = new Set<string>(["storage"]) // Default to storage
-    materialsUsed.forEach(mat => {
+    materialsUsed.forEach((mat) => {
       if (mat.source_location) {
         initialLocations.add(mat.source_location)
       }
@@ -659,7 +709,6 @@ export default function DailyLogsTab({
 
   const handleWorkerToggle = (workerId: string, checked: boolean) => {
     const workerIdStr = String(workerId)
-  
 
     setFormData((prev) => {
       let newWorkersPresent: string[]
@@ -676,7 +725,6 @@ export default function DailyLogsTab({
         newWorkersPresent = prev.workers_present.filter((id) => String(id) !== workerIdStr)
       }
 
-    
       return {
         ...prev,
         workers_present: newWorkersPresent,
@@ -744,13 +792,10 @@ export default function DailyLogsTab({
     const workerIdStr = String(workerId)
     const workerIdNum = Number(workerId)
 
-    
-
     const worker = workers.find(
       (w) => w.id === workerIdStr || w.id === String(workerIdNum) || String(w.id) === workerIdStr,
     )
 
-    
     return worker?.name || `Unknown Worker (ID: ${workerId})`
   }
 
@@ -1056,7 +1101,6 @@ export default function DailyLogsTab({
                         .filter((worker) => worker.status === "Active")
                         .map((worker) => {
                           const isChecked = formData.workers_present.includes(String(worker.id))
-                          
 
                           return (
                             <div key={worker.id} className="flex items-center space-x-2">
@@ -1064,7 +1108,6 @@ export default function DailyLogsTab({
                                 id={`worker-${worker.id}`}
                                 checked={isChecked}
                                 onCheckedChange={(checked) => {
-              
                                   handleWorkerToggle(String(worker.id), checked as boolean)
                                 }}
                               />
@@ -1697,15 +1740,20 @@ export default function DailyLogsTab({
                                               <div className="space-y-1">
                                                 <div className="flex items-center gap-1">
                                                   <Unlock className="h-3 w-3" />
-                                                  Visible: {material.visible_quantity} {getMaterialUnit(material.material_id)}
+                                                  Visible: {material.visible_quantity}{" "}
+                                                  {getMaterialUnit(material.material_id)}
                                                 </div>
                                                 <div className="flex items-center gap-1 text-blue-600">
                                                   <Lock className="h-3 w-3" />
-                                                  Actual: {material.actual_quantity} {getMaterialUnit(material.material_id)}
+                                                  Actual: {material.actual_quantity}{" "}
+                                                  {getMaterialUnit(material.material_id)}
                                                 </div>
                                               </div>
                                             ) : (
-                                              <span>Quantity: {material.visible_quantity || material.quantity} {getMaterialUnit(material.material_id)}</span>
+                                              <span>
+                                                Quantity: {material.visible_quantity || material.quantity}{" "}
+                                                {getMaterialUnit(material.material_id)}
+                                              </span>
                                             )}
                                           </div>
                                           {material.source_location && (
@@ -2138,15 +2186,12 @@ export default function DailyLogsTab({
                           formData.workers_present.includes(worker.id) ||
                           formData.workers_present.some((id) => String(id) === String(worker.id))
 
-                      
-
                         return (
                           <div key={worker.id} className="flex items-center space-x-2">
                             <Checkbox
                               id={`edit-worker-${worker.id}`}
                               checked={isChecked}
                               onCheckedChange={(checked) => {
-                                
                                 handleWorkerToggle(String(worker.id), checked as boolean)
                               }}
                             />
@@ -2168,7 +2213,7 @@ export default function DailyLogsTab({
                     Dual tracking: Actual usage affects inventory, Visible usage shown to non-admins
                   </div>
                 </div>
-                
+
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
                   <div className="space-y-4">
                     <div>
@@ -2285,7 +2330,7 @@ export default function DailyLogsTab({
                   </div>
                 </div>
                 {/* </CHANGE> */}
-                
+
                 <div className="space-y-3">
                   {formData.materials_used.map((materialUsed, index) => (
                     <div key={index} className="p-4 border rounded-lg bg-gray-50">
