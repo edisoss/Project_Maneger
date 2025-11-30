@@ -645,6 +645,8 @@ export async function getDailyLogs(
   filters?: {
     dateFilter?: { fromDate: string; toDate: string; quickFilter: string }
     projectFilter?: string
+    workerFilter?: string
+    // </CHANGE>
   },
 ): Promise<DailyLog[]> {
   try {
@@ -660,12 +662,17 @@ export async function getDailyLogs(
       .order("created_at", { ascending: false })
 
     if (filters) {
-      const { dateFilter, projectFilter } = filters
+      const { dateFilter, projectFilter, workerFilter } = filters
 
       // Project filter
       if (projectFilter && projectFilter !== "all") {
         query = query.eq("project_id", projectFilter)
       }
+
+      if (workerFilter && workerFilter !== "all") {
+        query = query.contains("workers_present", [workerFilter])
+      }
+      // </CHANGE>
 
       // Date filter
       if (dateFilter) {
@@ -747,6 +754,8 @@ export async function getDailyLogs(
 export async function getDailyLogsCount(filters?: {
   dateFilter?: { fromDate: string; toDate: string; quickFilter: string }
   projectFilter?: string
+  workerFilter?: string
+  // </CHANGE>
 }): Promise<number> {
   try {
     const supabase = createClientClient()
@@ -757,12 +766,17 @@ export async function getDailyLogsCount(filters?: {
     let query = supabase.from("daily_logs").select("*", { count: "exact", head: true })
 
     if (filters) {
-      const { dateFilter, projectFilter } = filters
+      const { dateFilter, projectFilter, workerFilter } = filters
 
       // Project filter
       if (projectFilter && projectFilter !== "all") {
         query = query.eq("project_id", projectFilter)
       }
+
+      if (workerFilter && workerFilter !== "all") {
+        query = query.contains("workers_present", [workerFilter])
+      }
+      // </CHANGE>
 
       // Date filter
       if (dateFilter) {
@@ -1773,12 +1787,14 @@ export async function getMaterialTransfers(materialId?: string): Promise<Materia
 export async function getDailyLogsStats(filters?: {
   dateFilter?: { fromDate: string; toDate: string; quickFilter: string }
   projectFilter?: string
+  workerFilter?: string
+  // </CHANGE>
 }): Promise<{
   totalLogs: number
   thisWeekCount: number
   thisMonthCount: number
   activeProjects: number
-}> {
+} | null> {
   try {
     const supabase = createClientClient()
     if (!supabase) {
@@ -1789,12 +1805,17 @@ export async function getDailyLogsStats(filters?: {
     let query = supabase.from("daily_logs").select("date, project_id").order("created_at", { ascending: false })
 
     if (filters) {
-      const { dateFilter, projectFilter } = filters
+      const { dateFilter, projectFilter, workerFilter } = filters
 
       // Project filter
       if (projectFilter && projectFilter !== "all") {
         query = query.eq("project_id", projectFilter)
       }
+
+      if (workerFilter && workerFilter !== "all") {
+        query = query.contains("workers_present", [workerFilter])
+      }
+      // </CHANGE>
 
       // Date filter
       if (dateFilter) {

@@ -126,6 +126,9 @@ export default function DailyLogsTab({
   // Project filtering state
   const [projectFilter, setProjectFilter] = useState("all")
 
+  const [workerFilter, setWorkerFilter] = useState("all")
+  // </CHANGE>
+
   const [selectedLocationsForMaterial, setSelectedLocationsForMaterial] = useState<string[]>(["storage"])
 
   // Load stats once on mount
@@ -147,14 +150,14 @@ export default function DailyLogsTab({
   useEffect(() => {
     const loadPaginatedLogs = async () => {
       const offset = (currentPage - 1) * logsPerPage
-      const logs = await getDailyLogs(logsPerPage, offset, { dateFilter, projectFilter })
-      const count = await getDailyLogsCount({ dateFilter, projectFilter })
+      const logs = await getDailyLogs(logsPerPage, offset, { dateFilter, projectFilter, workerFilter })
+      const count = await getDailyLogsCount({ dateFilter, projectFilter, workerFilter })
       // </CHANGE>
       setDailyLogs(logs)
       setTotalLogs(count)
     }
     loadPaginatedLogs()
-  }, [currentPage, setDailyLogs, dateFilter, projectFilter])
+  }, [currentPage, setDailyLogs, dateFilter, projectFilter, workerFilter])
 
   // Effect to reload stats when filters change
   useEffect(() => {
@@ -163,6 +166,8 @@ export default function DailyLogsTab({
         const statsData = await getDailyLogsStats({
           dateFilter,
           projectFilter,
+          workerFilter,
+          // </CHANGE>
         })
         if (statsData) {
           setStats(statsData)
@@ -172,7 +177,7 @@ export default function DailyLogsTab({
       }
     }
     loadStats()
-  }, [dateFilter, projectFilter])
+  }, [dateFilter, projectFilter, workerFilter])
 
   // Effect to open selected log
   useEffect(() => {
@@ -287,6 +292,8 @@ export default function DailyLogsTab({
       quickFilter: "all",
     })
     setProjectFilter("all")
+    setWorkerFilter("all")
+    // </CHANGE>
     setCurrentPage(1) // Reset to first page when filters are cleared
   }
 
@@ -315,8 +322,21 @@ export default function DailyLogsTab({
       filtered = filtered.filter((log) => log.project_id === projectFilter)
     }
 
+    // Apply worker filter
+    if (workerFilter !== "all") {
+      filtered = filtered.filter((log) => {
+        const workersPresent = Array.isArray(log.workers_present)
+          ? log.workers_present.map(String)
+          : typeof log.workers_present === "string"
+            ? JSON.parse(log.workers_present || "[]").map(String)
+            : []
+        return workersPresent.includes(workerFilter)
+      })
+    }
+    // </CHANGE>
+
     return filtered
-  }, [dailyLogs, dateFilter, projectFilter])
+  }, [dailyLogs, dateFilter, projectFilter, workerFilter])
 
   const availableMaterialsFromLocation = useMemo(() => {
     const materialsFromSelectedLocations = materials.filter((m) => {
@@ -831,7 +851,12 @@ export default function DailyLogsTab({
 
   // Check if any filters are active
   const hasActiveFilters =
-    dateFilter.quickFilter !== "all" || dateFilter.fromDate || dateFilter.toDate || projectFilter !== "all"
+    dateFilter.quickFilter !== "all" ||
+    dateFilter.fromDate ||
+    dateFilter.toDate ||
+    projectFilter !== "all" ||
+    workerFilter !== "all"
+  // </CHANGE>
 
   const handleLocationToggle = (locationId: string, checked: boolean) => {
     setSelectedLocationsForMaterial((prev) => {
@@ -1475,6 +1500,29 @@ export default function DailyLogsTab({
               </div>
             </div>
 
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                <Label className="text-sm font-medium">Filter by Worker</Label>
+              </div>
+              <div className="max-w-xs">
+                <Select value={workerFilter} onValueChange={setWorkerFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Workers" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Workers</SelectItem>
+                    {workers.map((worker) => (
+                      <SelectItem key={worker.id} value={String(worker.id)}>
+                        {worker.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {/* </CHANGE> */}
+
             {/* Filter Summary and Clear Button */}
             <div className="flex items-center justify-between pt-4 border-t">
               <div className="text-sm text-gray-600">
@@ -1490,6 +1538,9 @@ export default function DailyLogsTab({
                     {projectFilter !== "all" && (
                       <span className="ml-2">for project: {getProjectName(projectFilter)}</span>
                     )}
+                    {/* Display worker filter in summary */}
+                    {workerFilter !== "all" && <span className="ml-2">by worker: {getWorkerName(workerFilter)}</span>}
+                    {/* </CHANGE> */}
                   </>
                 ) : (
                   `Showing all ${totalLogs} logs`
