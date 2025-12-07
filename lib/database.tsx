@@ -392,7 +392,7 @@ export async function deleteProfile(id: string): Promise<boolean> {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ id }),
+      body: JSON.JSON.stringify({ id }),
     })
 
     const result = await response.json()
@@ -1913,6 +1913,205 @@ export async function deleteDocument(id: string): Promise<boolean> {
     if (error) return false
     return true
   } catch (error) {
+    return false
+  }
+}
+
+// Daily Log Photos functions
+export async function getDailyLogPhotos(dailyLogId: string): Promise<any[]> {
+  try {
+    const supabase = createClientClient()
+    if (!supabase) return []
+
+    const { data, error } = await supabase
+      .from("daily_log_photos")
+      .select("*")
+      .eq("daily_log_id", dailyLogId)
+      .order("uploaded_at", { ascending: false })
+
+    if (error) return []
+    return data || []
+  } catch (error) {
+    return []
+  }
+}
+
+export async function addDailyLogPhoto(
+  dailyLogId: string,
+  photo: {
+    url: string
+    caption?: string
+    type?: string
+    file_name: string
+    file_size: number
+    uploaded_by: string
+    folder_path?: string // Keep in type for compatibility but won't be inserted
+  },
+): Promise<any | null> {
+  try {
+    const supabase = createClientClient()
+    if (!supabase) {
+      console.error("[v0] Supabase client not initialized")
+      return null
+    }
+
+    console.log("[v0] Inserting daily log photo:", { dailyLogId, photo })
+
+    const { folder_path, ...photoData } = photo
+
+    const { data, error } = await supabase
+      .from("daily_log_photos")
+      .insert([
+        {
+          daily_log_id: dailyLogId,
+          ...photoData,
+        },
+      ])
+      .select()
+      .single()
+
+    if (error) {
+      console.error("[v0] Database insert error:", error)
+      return null
+    }
+
+    console.log("[v0] Successfully inserted photo:", data)
+    return data
+  } catch (error) {
+    console.error("[v0] Exception in addDailyLogPhoto:", error)
+    return null
+  }
+}
+
+// Project Photos functions
+export async function getProjectPhotos(projectId: string): Promise<any[]> {
+  try {
+    const supabase = createClientClient()
+    if (!supabase) return []
+
+    // Get direct project photos
+    const { data: projectPhotosData, error: projectPhotosError } = await supabase
+      .from("project_photos")
+      .select("*")
+      .eq("project_id", projectId)
+      .order("uploaded_at", { ascending: false })
+
+    if (projectPhotosError) {
+      console.error("[v0] Error fetching project photos:", projectPhotosError)
+    }
+
+    // Get photos from daily logs associated with this project
+    const { data: dailyLogPhotosData, error: dailyLogPhotosError } = await supabase
+      .from("daily_log_photos")
+      .select(`
+        *,
+        daily_logs!inner(project_id, date)
+      `)
+      .eq("daily_logs.project_id", projectId)
+      .order("uploaded_at", { ascending: false })
+
+    if (dailyLogPhotosError) {
+      console.error("[v0] Error fetching daily log photos:", dailyLogPhotosError)
+    }
+
+    // Combine both arrays
+    const allPhotos = [...(projectPhotosData || []), ...(dailyLogPhotosData || [])]
+
+    // Sort by uploaded_at descending
+    allPhotos.sort((a, b) => {
+      const dateA = new Date(a.uploaded_at).getTime()
+      const dateB = new Date(b.uploaded_at).getTime()
+      return dateB - dateA
+    })
+
+    return allPhotos
+  } catch (error) {
+    console.error("[v0] Exception in getProjectPhotos:", error)
+    return []
+  }
+}
+
+export async function addProjectPhoto(
+  projectId: string,
+  photo: {
+    url: string
+    caption?: string
+    type?: string
+    file_name: string
+    file_size: number
+    uploaded_by: string
+    folder_path?: string // Keep in type for compatibility but won't be inserted
+  },
+): Promise<any | null> {
+  try {
+    const supabase = createClientClient()
+    if (!supabase) {
+      console.error("[v0] Supabase client not initialized")
+      return null
+    }
+
+    console.log("[v0] Inserting project photo:", { projectId, photo })
+
+    const { folder_path, ...photoData } = photo
+
+    const { data, error } = await supabase
+      .from("project_photos")
+      .insert([
+        {
+          project_id: projectId,
+          ...photoData,
+        },
+      ])
+      .select()
+      .single()
+
+    if (error) {
+      console.error("[v0] Database insert error:", error)
+      return null
+    }
+
+    console.log("[v0] Successfully inserted photo:", data)
+    return data
+  } catch (error) {
+    console.error("[v0] Exception in addProjectPhoto:", error)
+    return null
+  }
+}
+
+export async function deleteDailyLogPhoto(photoId: string): Promise<boolean> {
+  try {
+    const supabase = createClientClient()
+    if (!supabase) return false
+
+    const { error } = await supabase.from("daily_log_photos").delete().eq("id", photoId)
+
+    if (error) {
+      console.error("[v0] Error deleting daily log photo:", error)
+      return false
+    }
+
+    return true
+  } catch (error) {
+    console.error("[v0] Exception in deleteDailyLogPhoto:", error)
+    return false
+  }
+}
+
+export async function deleteProjectPhoto(photoId: string): Promise<boolean> {
+  try {
+    const supabase = createClientClient()
+    if (!supabase) return false
+
+    const { error } = await supabase.from("project_photos").delete().eq("id", photoId)
+
+    if (error) {
+      console.error("[v0] Error deleting project photo:", error)
+      return false
+    }
+
+    return true
+  } catch (error) {
+    console.error("[v0] Exception in deleteProjectPhoto:", error)
     return false
   }
 }

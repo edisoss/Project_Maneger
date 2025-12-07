@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -28,12 +30,30 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Plus, Edit, Trash2, Building2, Calendar, MapPin, TrendingUp, Loader2, Eye, MapIcon, List, FileText, Upload, Download, X } from 'lucide-react'
+import {
+  Plus,
+  Edit,
+  Trash2,
+  Building2,
+  Calendar,
+  MapPin,
+  TrendingUp,
+  Loader2,
+  Eye,
+  MapIcon,
+  List,
+  FileText,
+  Upload,
+  Download,
+  X,
+} from "lucide-react"
 import { addProject, updateProject, deleteProject, getDocuments, addDocument, deleteDocument } from "@/lib/database"
 import type { Project, Document } from "@/lib/database"
 import { useToast } from "@/hooks/use-toast"
 import dynamic from "next/dynamic"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import PhotoGallery from "@/components/photo-gallery"
+import { getProjectPhotos, addProjectPhoto, deleteProjectPhoto } from "@/lib/database"
 
 // Dynamically import the map component to avoid SSR issues with Leaflet
 const ProjectMap = dynamic(() => import("./project-map"), {
@@ -56,6 +76,7 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
   const [viewMode, setViewMode] = useState<"list" | "map">("list")
   const [selectedProject, setSelectedProject] = useState<Project | null>(null)
   const [projectDocuments, setProjectDocuments] = useState<Document[]>([])
+  const [projectPhotos, setProjectPhotos] = useState<any[]>([])
   const [uploading, setUploading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -155,12 +176,21 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
     setShowEditDialog(true)
   }
 
+  const loadProjectDocuments = async (projectId: string) => {
+    const docs = await getDocuments(projectId)
+    setProjectDocuments(docs)
+  }
+
+  const loadProjectPhotos = async (projectId: string) => {
+    const photos = await getProjectPhotos(projectId)
+    setProjectPhotos(photos)
+  }
+
   const handleView = async (project: Project) => {
     setSelectedProject(project)
     setShowViewDialog(true)
-    // Fetch documents
-    const docs = await getDocuments(project.id)
-    setProjectDocuments(docs)
+    await loadProjectDocuments(project.id.toString())
+    await loadProjectPhotos(project.id.toString())
   }
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -580,7 +610,9 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
           <CardHeader>
             <CardTitle>Construction Projects</CardTitle>
             <CardDescription>
-              {isAdmin ? "Manage and track your construction projects" : "View construction projects and their progress"}
+              {isAdmin
+                ? "Manage and track your construction projects"
+                : "View construction projects and their progress"}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -676,9 +708,10 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
           </DialogHeader>
           {selectedProject && (
             <Tabs defaultValue="details">
-              <TabsList className="grid w-full grid-cols-2">
+              <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="details">Details</TabsTrigger>
                 <TabsTrigger value="documents">Documents</TabsTrigger>
+                <TabsTrigger value="photos">Photos</TabsTrigger>
               </TabsList>
               <TabsContent value="details" className="space-y-4 mt-4">
                 <div className="grid grid-cols-2 gap-4">
@@ -827,6 +860,19 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
                     </TableBody>
                   </Table>
                 </div>
+              </TabsContent>
+              <TabsContent value="photos" className="space-y-4 mt-4">
+                <PhotoGallery
+                  photos={projectPhotos}
+                  onPhotosChange={() => loadProjectPhotos(selectedProject.id.toString())}
+                  entityType="project"
+                  entityId={selectedProject.id.toString()}
+                  isAdmin={isAdmin}
+                  addPhotoFn={(photo) => addProjectPhoto(selectedProject.id.toString(), photo)}
+                  deletePhotoFn={deleteProjectPhoto}
+                  projectName={selectedProject.name}
+                />
+                {/* </CHANGE> */}
               </TabsContent>
             </Tabs>
           )}

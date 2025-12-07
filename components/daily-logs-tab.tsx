@@ -65,10 +65,14 @@ import {
   getDailyLogs,
   getDailyLogsCount,
   getDailyLogsStats, // Import getDailyLogsStats
+  getDailyLogPhotos, // Added for photo gallery
+  addDailyLogPhoto, // Added for photo gallery
+  deleteDailyLogPhoto, // Added for photo gallery
 } from "@/lib/database"
 import type { DailyLog, Project, Worker, Material } from "@/lib/database"
 import { useToast } from "@/hooks/use-toast"
 import type { Activity } from "./recent-activities"
+import PhotoGallery from "@/components/photo-gallery" // Added for photo gallery
 
 interface DailyLogsTabProps {
   dailyLogs: DailyLog[]
@@ -130,6 +134,9 @@ export default function DailyLogsTab({
   // </CHANGE>
 
   const [selectedLocationsForMaterial, setSelectedLocationsForMaterial] = useState<string[]>(["storage"])
+
+  // State for photos - Added
+  const [logPhotos, setLogPhotos] = useState<any[]>([])
 
   // Load stats once on mount
   useEffect(() => {
@@ -591,8 +598,23 @@ export default function DailyLogsTab({
     setShowEditDialog(true)
   }
 
+  // Load photos for the specified log
+  const loadDailyLogPhotos = async (logId: string) => {
+    if (!logId) return
+    try {
+      const photos = await getDailyLogPhotos(logId)
+      setLogPhotos(photos)
+    } catch (error) {
+      console.error("Error loading daily log photos:", error)
+      setLogPhotos([])
+    }
+  }
+
+  // Modified handleView to set viewingLog and load photos
   const handleView = (log: DailyLog) => {
     setSelectedLog(log)
+    setViewingLog(log) // Set the log being viewed
+    loadDailyLogPhotos(log.id.toString()) // Load photos for this log
     setShowViewDialog(true)
   }
 
@@ -966,6 +988,32 @@ export default function DailyLogsTab({
       setSaving(false)
     }
   }
+
+  // State for the log being viewed (for PhotoGallery integration)
+  const [viewingLog, setViewingLog] = useState<DailyLog | null>(null)
+  // const [dailyLogPhotos, setDailyLogPhotos] = useState<any[]>([]) // This state is already declared above
+
+  // const loadDailyLogPhotos = async (logId: string) => {
+  //   if (!logId) return
+  //   try {
+  //     const photos = await getDailyLogPhotos(logId)
+  //     setDailyLogPhotos(photos)
+  //   } catch (error) {
+  //     console.error("Error loading daily log photos:", error)
+  //     setDailyLogPhotos([])
+  //   }
+  // }
+
+  // Modified handleView to set viewingLog and load photos
+  // const handleView = (log: DailyLog) => {
+  //   setSelectedLog(log)
+  //   setViewingLog(log) // Set the log being viewed
+  //   loadDailyLogPhotos(log.id.toString()) // Load photos for this log
+  //   setShowViewDialog(true)
+  // }
+
+  // Updated the PhotoGallery component
+  const userProfile = { role: isAdmin ? "admin" : userRole } // Mock userProfile for the example
 
   return (
     <div className="space-y-6">
@@ -2090,6 +2138,25 @@ export default function DailyLogsTab({
                   <p className="text-sm text-gray-600 mt-1">{selectedLog.notes}</p>
                 </div>
               )}
+
+              <div>
+                <PhotoGallery
+                  photos={logPhotos}
+                  onPhotosChange={() => loadDailyLogPhotos(selectedLog.id.toString())}
+                  entityType="daily_log"
+                  entityId={selectedLog.id.toString()}
+                  isAdmin={userProfile?.role === "admin"}
+                  addPhotoFn={async (photo) => {
+                    if (!selectedLog?.id) return null
+                    return await addDailyLogPhoto(selectedLog.id.toString(), photo)
+                  }}
+                  deletePhotoFn={deleteDailyLogPhoto}
+                  projectName={projects.find((p) => p.id === selectedLog?.project_id)?.name}
+                  logDate={selectedLog?.date}
+                  logId={selectedLog?.id.toString()} // Added logId prop
+                />
+                {/* </CHANGE> */}
+              </div>
             </div>
           )}
           <div className="flex justify-end">
