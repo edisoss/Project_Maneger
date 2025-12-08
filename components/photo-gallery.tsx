@@ -2,7 +2,19 @@
 
 import type React from "react"
 import JSZip from "jszip"
-import { Download } from "lucide-react"
+import {
+  Download,
+  X,
+  Camera,
+  Upload,
+  Eye,
+  Trash2,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  ImageIcon,
+  Calendar,
+} from "lucide-react"
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
@@ -13,7 +25,6 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
-import { Camera, Upload, Eye, Trash2, ChevronLeft, ChevronRight, Loader2, ImageIcon, Calendar } from "lucide-react"
 import { uploadPhotoToBlob, deletePhotoFromBlob } from "@/app/actions/blob-actions"
 
 interface Photo {
@@ -40,19 +51,22 @@ interface PhotoGalleryProps {
   projectName?: string
   logDate?: string
   logId?: string // Added logId prop to include in folder structure
+  canUpload?: boolean
+  canDelete?: boolean
 }
 
-function PhotoGallery({
+export default function PhotoGallery({
   photos,
-  onPhotosChange,
   entityType,
   entityId,
-  isAdmin,
-  addPhotoFn,
-  deletePhotoFn,
   projectName,
   logDate,
   logId,
+  addPhotoFn,
+  deletePhotoFn,
+  onPhotosChange,
+  canUpload = false,
+  canDelete = false,
 }: PhotoGalleryProps) {
   const [showUploadDialog, setShowUploadDialog] = useState(false)
   const [showViewDialog, setShowViewDialog] = useState(false)
@@ -63,8 +77,9 @@ function PhotoGallery({
     caption: "",
     type: "progress" as Photo["type"],
   })
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const [previewUrls, setPreviewUrls] = useState<string[]>([])
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 })
   const [filterType, setFilterType] = useState<string>("all")
   const [viewMode, setViewMode] = useState<"grid" | "folders">("folders")
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
@@ -79,96 +94,129 @@ function PhotoGallery({
   ]
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
+    const files = Array.from(event.target.files || [])
+    if (files.length === 0) return
 
-    if (!file.type.startsWith("image/")) {
-      toast({
-        title: "Invalid file",
-        description: "Please select an image file",
-        variant: "destructive",
-      })
-      return
+    const validFiles: File[] = []
+    const urls: string[] = []
+
+    for (const file of files) {
+      if (!file.type.startsWith("image/")) {
+        toast({
+          title: "Invalid file",
+          description: `${file.name} is not an image file`,
+          variant: "destructive",
+        })
+        continue
+      }
+
+      if (file.size > 10 * 1024 * 1024) {
+        toast({
+          title: "File too large",
+          description: `${file.name} is larger than 10MB`,
+          variant: "destructive",
+        })
+        continue
+      }
+
+      validFiles.push(file)
+      urls.push(URL.createObjectURL(file))
     }
 
-    if (file.size > 10 * 1024 * 1024) {
-      toast({
-        title: "File too large",
-        description: "Please select an image smaller than 10MB",
-        variant: "destructive",
-      })
-      return
-    }
-
-    setSelectedFile(file)
-    const url = URL.createObjectURL(file)
-    setPreviewUrl(url)
+    setSelectedFiles(validFiles)
+    setPreviewUrls(urls)
   }
 
   const handleUpload = async () => {
-    if (!selectedFile) return
+    if (selectedFiles.length === 0) return
 
     setUploading(true)
+    setUploadProgress({ current: 0, total: selectedFiles.length })
+
     try {
-      console.log("[v0] Starting upload process...")
-      const formData = new FormData()
-      formData.append("file", selectedFile)
+      let successCount = 0
+      let failCount = 0
 
-      let folderPath: string | undefined
-      if (entityType === "daily_log" && projectName && logDate && logId) {
-        const sanitizedProjectName = projectName.replace(/[^a-zA-Z0-9-_]/g, "_")
-        const formattedDate = new Date(logDate).toISOString().split("T")[0]
-        folderPath = `${sanitizedProjectName}/${formattedDate}/Log_${logId}`
-      } else if (entityType === "project" && projectName) {
-        const sanitizedProjectName = projectName.replace(/[^a-zA-Z0-9-_]/g, "_")
-        folderPath = sanitizedProjectName
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i]
+        setUploadProgress({ current: i + 1, total: selectedFiles.length })
+
+        try {
+          console.log(`[v0] Uploading file ${i + 1}/${selectedFiles.length}: ${file.name}`)
+          const formData = new FormData()
+          formData.append("file", file)
+
+          let folderPath: string | undefined
+          if (entityType === "daily_log" && projectName && logDate && logId) {
+            const sanitizedProjectName = projectName.replace(/[^a-zA-Z0-9-_]/g, "_")
+            const formattedDate = new Date(logDate).toISOString().split("T")[0]
+            folderPath = `${sanitizedProjectName}/${formattedDate}/Log_${logId}`
+          } else if (entityType === "project" && projectName) {
+            const sanitizedProjectName = projectName.replace(/[^a-zA-Z0-9-_]/g, "_")
+            folderPath = sanitizedProjectName
+          }
+
+          if (folderPath) {
+            formData.append("folderPath", folderPath)
+          }
+
+          const result = await uploadPhotoToBlob(formData)
+
+          if (!result.success) {
+            throw new Error(result.error)
+          }
+
+          const photoData = {
+            url: result.url!,
+            caption: uploadData.caption || undefined,
+            type: uploadData.type,
+            file_name: file.name,
+            file_size: file.size,
+            uploaded_by: "Current User",
+            folder_path: result.folderPath,
+          }
+
+          const photo = await addPhotoFn(photoData)
+
+          if (photo) {
+            successCount++
+          } else {
+            failCount++
+          }
+        } catch (error) {
+          console.error(`[v0] Error uploading ${file.name}:`, error)
+          failCount++
+        }
       }
 
-      if (folderPath) {
-        formData.append("folderPath", folderPath)
-        console.log("[v0] Upload folder path:", folderPath)
-      }
-
-      console.log("[v0] Calling uploadPhotoToBlob...")
-      const result = await uploadPhotoToBlob(formData)
-      console.log("[v0] Upload result:", result)
-
-      if (!result.success) {
-        throw new Error(result.error)
-      }
-
-      const photoData = {
-        url: result.url!,
-        caption: uploadData.caption || undefined,
-        type: uploadData.type,
-        file_name: selectedFile.name,
-        file_size: selectedFile.size,
-        uploaded_by: "Current User",
-        folder_path: result.folderPath,
-      }
-
-      console.log("[v0] Saving photo to database...")
-      const photo = await addPhotoFn(photoData)
-      console.log("[v0] Database save result:", photo)
-
-      if (photo) {
+      // Show results
+      if (successCount > 0) {
         toast({
-          title: "Success",
-          description: folderPath ? `Photo uploaded to ${folderPath}` : "Photo uploaded successfully",
+          title: "Upload complete",
+          description: `${successCount} photo${successCount > 1 ? "s" : ""} uploaded successfully${failCount > 0 ? `, ${failCount} failed` : ""}`,
         })
-        setShowUploadDialog(false)
-        setUploadData({ caption: "", type: "progress" })
-        setSelectedFile(null)
-        setPreviewUrl(null)
-        onPhotosChange()
-      } else {
-        throw new Error("Failed to save photo to database")
       }
+
+      if (failCount > 0 && successCount === 0) {
+        toast({
+          title: "Upload failed",
+          description: `Failed to upload ${failCount} photo${failCount > 1 ? "s" : ""}`,
+          variant: "destructive",
+        })
+      }
+
+      // Reset form
+      setShowUploadDialog(false)
+      setUploadData({ caption: "", type: "progress" })
+      setSelectedFiles([])
+      setPreviewUrls([])
+      setUploadProgress({ current: 0, total: 0 })
+      onPhotosChange()
     } catch (error) {
       console.error("[v0] Upload error:", error)
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to upload photo",
+        title: "Upload failed",
+        description: error instanceof Error ? error.message : "An error occurred during upload",
         variant: "destructive",
       })
     } finally {
@@ -347,7 +395,7 @@ function PhotoGallery({
               ))}
             </SelectContent>
           </Select>
-          {isAdmin && (
+          {canUpload && (
             <Button onClick={() => setShowUploadDialog(true)}>
               <Camera className="h-4 w-4 mr-2" />
               Add Photo
@@ -399,7 +447,7 @@ function PhotoGallery({
           <p className="text-gray-500">
             {filterType === "all" ? "No photos uploaded yet" : `No ${filterType} photos found`}
           </p>
-          {isAdmin && (
+          {canUpload && (
             <Button className="mt-4 bg-transparent" variant="outline" onClick={() => setShowUploadDialog(true)}>
               <Upload className="h-4 w-4 mr-2" />
               Upload First Photo
@@ -507,7 +555,7 @@ function PhotoGallery({
                                           {typeConfig.label}
                                         </Badge>
                                       )}
-                                      {isAdmin && (
+                                      {canDelete && (
                                         <Button
                                           variant="destructive"
                                           size="sm"
@@ -567,7 +615,7 @@ function PhotoGallery({
                     >
                       <Eye className="h-4 w-4" />
                     </Button>
-                    {isAdmin && (
+                    {canDelete && (
                       <Button
                         size="sm"
                         variant="destructive"
@@ -591,31 +639,60 @@ function PhotoGallery({
       <Dialog open={showUploadDialog} onOpenChange={setShowUploadDialog}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Upload Photo</DialogTitle>
+            <DialogTitle>Upload Photos</DialogTitle>
             <DialogDescription>
-              Add a new photo to this {entityType === "daily_log" ? "daily log" : "project"}
+              Add photos to this {entityType === "daily_log" ? "daily log" : "project"}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="photo-upload">Select Photo</Label>
-              <Input id="photo-upload" type="file" accept="image/*" onChange={handleFileSelect} className="mt-1" />
-              <p className="text-xs text-gray-500 mt-1">Maximum file size: 10MB</p>
+              <Label htmlFor="photo-upload">Select Photos</Label>
+              <Input
+                id="photo-upload"
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleFileSelect}
+                className="mt-1"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Maximum file size: 10MB per photo. You can select multiple photos.
+              </p>
             </div>
 
-            {previewUrl && (
+            {previewUrls.length > 0 && (
               <div className="border rounded-lg p-4">
-                <p className="text-sm font-medium mb-2">Preview:</p>
-                <img
-                  src={previewUrl || "/placeholder.svg"}
-                  alt="Preview"
-                  className="w-full max-h-64 object-contain rounded"
-                />
+                <p className="text-sm font-medium mb-2">
+                  Preview ({previewUrls.length} photo{previewUrls.length > 1 ? "s" : ""}):
+                </p>
+                <div className="grid grid-cols-3 gap-2 max-h-64 overflow-y-auto">
+                  {previewUrls.map((url, index) => (
+                    <div key={index} className="relative">
+                      <img
+                        src={url || "/placeholder.svg"}
+                        alt={`Preview ${index + 1}`}
+                        className="w-full h-24 object-cover rounded"
+                      />
+                      <button
+                        onClick={() => {
+                          const newFiles = selectedFiles.filter((_, i) => i !== index)
+                          const newUrls = previewUrls.filter((_, i) => i !== index)
+                          URL.revokeObjectURL(url)
+                          setSelectedFiles(newFiles)
+                          setPreviewUrls(newUrls)
+                        }}
+                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
             <div>
-              <Label htmlFor="photo-type">Photo Type</Label>
+              <Label htmlFor="photo-type">Photo Type (applies to all)</Label>
               <Select
                 value={uploadData.type}
                 onValueChange={(value) => setUploadData((prev) => ({ ...prev, type: value as Photo["type"] }))}
@@ -634,30 +711,47 @@ function PhotoGallery({
             </div>
 
             <div>
-              <Label htmlFor="caption">Caption (Optional)</Label>
+              <Label htmlFor="caption">Caption (Optional, applies to all)</Label>
               <Textarea
                 id="caption"
-                placeholder="Add a description or notes about this photo"
+                placeholder="Add a description or notes about these photos"
                 value={uploadData.caption}
                 onChange={(e) => setUploadData((prev) => ({ ...prev, caption: e.target.value }))}
                 rows={3}
               />
             </div>
+
+            {uploading && uploadProgress.total > 0 && (
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span>Uploading...</span>
+                  <span>
+                    {uploadProgress.current} of {uploadProgress.total}
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
           <div className="flex justify-end space-x-2">
             <Button variant="outline" onClick={() => setShowUploadDialog(false)} disabled={uploading}>
               Cancel
             </Button>
-            <Button onClick={handleUpload} disabled={uploading || !selectedFile}>
+            <Button onClick={handleUpload} disabled={uploading || selectedFiles.length === 0}>
               {uploading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Uploading...
+                  Uploading {uploadProgress.current}/{uploadProgress.total}...
                 </>
               ) : (
                 <>
                   <Upload className="h-4 w-4 mr-2" />
-                  Upload Photo
+                  Upload {selectedFiles.length} Photo{selectedFiles.length !== 1 ? "s" : ""}
                 </>
               )}
             </Button>
@@ -733,7 +827,7 @@ function PhotoGallery({
 
               <div className="flex justify-between items-center pt-4 border-t">
                 <div className="text-sm text-gray-500">Uploaded by {selectedPhoto.uploaded_by}</div>
-                {isAdmin && (
+                {canDelete && (
                   <Button
                     variant="destructive"
                     size="sm"
@@ -751,5 +845,3 @@ function PhotoGallery({
     </div>
   )
 }
-
-export default PhotoGallery

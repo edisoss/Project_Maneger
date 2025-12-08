@@ -2146,6 +2146,9 @@ export default function DailyLogsTab({
                   entityType="daily_log"
                   entityId={selectedLog.id.toString()}
                   isAdmin={userProfile?.role === "admin"}
+                  canUpload={canEditDailyLogs}
+                  canDelete={isAdmin}
+                  // </CHANGE>
                   addPhotoFn={async (photo) => {
                     if (!selectedLog?.id) return null
                     return await addDailyLogPhoto(selectedLog.id.toString(), photo)
@@ -2153,9 +2156,8 @@ export default function DailyLogsTab({
                   deletePhotoFn={deleteDailyLogPhoto}
                   projectName={projects.find((p) => p.id === selectedLog?.project_id)?.name}
                   logDate={selectedLog?.date}
-                  logId={selectedLog?.id.toString()} // Added logId prop
+                  logId={selectedLog?.id.toString()}
                 />
-                {/* </CHANGE> */}
               </div>
             </div>
           )}
