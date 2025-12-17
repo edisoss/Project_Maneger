@@ -2115,3 +2115,28 @@ export async function deleteProjectPhoto(photoId: string): Promise<boolean> {
     return false
   }
 }
+
+export async function getDailyLogPhotoCounts(logIds: number[]): Promise<Map<number, number>> {
+  try {
+    const supabase = createClientClient()
+    if (!supabase || logIds.length === 0) {
+      return new Map()
+    }
+
+    const { data, error } = await supabase.from("daily_log_photos").select("daily_log_id").in("daily_log_id", logIds)
+
+    if (error || !data) {
+      return new Map()
+    }
+
+    const counts = new Map<number, number>()
+    data.forEach((photo) => {
+      const count = counts.get(photo.daily_log_id) || 0
+      counts.set(photo.daily_log_id, count + 1)
+    })
+
+    return counts
+  } catch (error) {
+    return new Map()
+  }
+}

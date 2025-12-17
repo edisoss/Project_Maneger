@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -56,6 +56,7 @@ import {
   Building2,
   ChevronLeft,
   ChevronRight,
+  Camera,
 } from "lucide-react"
 import {
   addDailyLog,
@@ -68,6 +69,7 @@ import {
   getDailyLogPhotos, // Added for photo gallery
   addDailyLogPhoto, // Added for photo gallery
   deleteDailyLogPhoto, // Added for photo gallery
+  getDailyLogPhotoCounts, // Import getDailyLogPhotoCounts
 } from "@/lib/database"
 import type { DailyLog, Project, Worker, Material } from "@/lib/database"
 import { useToast } from "@/hooks/use-toast"
@@ -88,8 +90,8 @@ interface DailyLogsTabProps {
 }
 
 export default function DailyLogsTab({
-  dailyLogs = [],
-  setDailyLogs = () => {},
+  dailyLogs: initialDailyLogs = [], // Rename to avoid conflict
+  setDailyLogs,
   projects = [],
   workers = [],
   materials = [],
@@ -131,12 +133,14 @@ export default function DailyLogsTab({
   const [projectFilter, setProjectFilter] = useState("all")
 
   const [workerFilter, setWorkerFilter] = useState("all")
-  // </CHANGE>
-
-  const [selectedLocationsForMaterial, setSelectedLocationsForMaterial] = useState<string[]>(["storage"])
+  const [isLoading, setIsLoading] = useState(true) // Added loading state
 
   // State for photos - Added
   const [logPhotos, setLogPhotos] = useState<any[]>([])
+  const [photoCountsMap, setPhotoCountsMap] = useState<Map<number, number>>(new Map())
+
+  // State for material location filtering
+  const [selectedLocationsForMaterial, setSelectedLocationsForMaterial] = useState<string[]>(["storage"])
 
   // Load stats once on mount
   useEffect(() => {
@@ -154,17 +158,28 @@ export default function DailyLogsTab({
   }, []) // Load once on mount
 
   // Load paginated logs and total count
-  useEffect(() => {
-    const loadPaginatedLogs = async () => {
+  const loadDailyLogs = useCallback(async () => {
+    try {
+      setIsLoading(true)
       const offset = (currentPage - 1) * logsPerPage
       const logs = await getDailyLogs(logsPerPage, offset, { dateFilter, projectFilter, workerFilter })
       const count = await getDailyLogsCount({ dateFilter, projectFilter, workerFilter })
-      // </CHANGE>
       setDailyLogs(logs)
       setTotalLogs(count)
+
+      const logIds = logs.map((log) => log.id)
+      const counts = await getDailyLogPhotoCounts(logIds)
+      setPhotoCountsMap(counts)
+    } catch (error) {
+      console.error("Error loading logs:", error)
+    } finally {
+      setIsLoading(false)
     }
-    loadPaginatedLogs()
-  }, [currentPage, setDailyLogs, dateFilter, projectFilter, workerFilter])
+  }, [currentPage, setDailyLogs, dateFilter, projectFilter, workerFilter]) // Added dependencies
+
+  useEffect(() => {
+    loadDailyLogs()
+  }, [loadDailyLogs])
 
   // Effect to reload stats when filters change
   useEffect(() => {
@@ -174,7 +189,6 @@ export default function DailyLogsTab({
           dateFilter,
           projectFilter,
           workerFilter,
-          // </CHANGE>
         })
         if (statsData) {
           setStats(statsData)
@@ -188,13 +202,13 @@ export default function DailyLogsTab({
 
   // Effect to open selected log
   useEffect(() => {
-    if (selectedLogId && dailyLogs.length > 0) {
-      const log = dailyLogs.find((l) => l.id === selectedLogId)
+    if (selectedLogId && initialDailyLogs.length > 0) {
+      const log = initialDailyLogs.find((l) => l.id === selectedLogId)
       if (log) {
         handleView(log)
       }
     }
-  }, [selectedLogId, dailyLogs])
+  }, [selectedLogId, initialDailyLogs]) // Use initialDailyLogs here
 
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split("T")[0],
@@ -206,7 +220,7 @@ export default function DailyLogsTab({
       actual_quantity: number
       visible_quantity: number
       source_location: string // Add source location tracking: "storage" or project_id
-    }[], // </CHANGE>
+    }[],
     equipment_used: "",
     weather_conditions: "Sunny",
     working_place: "",
@@ -251,7 +265,7 @@ export default function DailyLogsTab({
         return { fromDate: todayStr, toDate: todayStr }
       case "week":
         const weekStart = new Date(today)
-        weekStart.setDate(today.getDay()) // Start of week (Sunday)
+        weekStart.setDate(today.getDate() - today.getDay()) // Start of week (Sunday)
         const weekEnd = new Date(weekStart)
         weekEnd.setDate(weekStart.getDate() + 6) // End of week (Saturday)
         return {
@@ -300,13 +314,12 @@ export default function DailyLogsTab({
     })
     setProjectFilter("all")
     setWorkerFilter("all")
-    // </CHANGE>
     setCurrentPage(1) // Reset to first page when filters are cleared
   }
 
   // Filter logs based on date range and project
   const filteredLogs = useMemo(() => {
-    let filtered = dailyLogs
+    let filtered = initialDailyLogs // Use initialDailyLogs here
 
     // Apply date filter
     if (dateFilter.quickFilter !== "all" || dateFilter.fromDate || dateFilter.toDate) {
@@ -340,10 +353,9 @@ export default function DailyLogsTab({
         return workersPresent.includes(workerFilter)
       })
     }
-    // </CHANGE>
 
     return filtered
-  }, [dailyLogs, dateFilter, projectFilter, workerFilter])
+  }, [initialDailyLogs, dateFilter, projectFilter, workerFilter]) // Use initialDailyLogs here
 
   const availableMaterialsFromLocation = useMemo(() => {
     const materialsFromSelectedLocations = materials.filter((m) => {
@@ -354,9 +366,7 @@ export default function DailyLogsTab({
       )
     })
     return materialsFromSelectedLocations
-    // </CHANGE>
   }, [materials, selectedLocationsForMaterial, formData.materials_used])
-  // </CHANGE>
 
   const materialsByLocation = useMemo(() => {
     const grouped = new Map<string, Material[]>()
@@ -377,7 +387,6 @@ export default function DailyLogsTab({
 
     return grouped
   }, [materials, projects])
-  // </CHANGE>
 
   const resetForm = () => {
     setFormData({
@@ -394,7 +403,6 @@ export default function DailyLogsTab({
       notes: "",
     })
     setSelectedLocationsForMaterial(["storage"])
-    // </CHANGE>
   }
 
   const handleAddDailyLog = async () => {
@@ -478,11 +486,8 @@ export default function DailyLogsTab({
       })
 
       // setDailyLogs([...dailyLogs, newLog]) // Remove this line
-      setCurrentPage(1)
-      const logs = await getDailyLogs(logsPerPage, 0, { dateFilter, projectFilter }) // Pass filters
-      const count = await getDailyLogsCount({ dateFilter, projectFilter }) // Pass filters
-      setDailyLogs(logs)
-      setTotalLogs(count)
+      setCurrentPage(1) // Reset to first page
+      loadDailyLogs() // Reload logs to reflect new entry and pagination
 
       // logActivity({ // This logActivity call is duplicated, removed from here
       //   type: "daily_log",
@@ -516,11 +521,6 @@ export default function DailyLogsTab({
         const parsed = JSON.parse(log.workers_present || "[]")
         workersPresent = Array.isArray(parsed) ? parsed.map((id) => String(id)) : []
       }
-
-      // Verify which workers should be selected
-      const matchingWorkers = workers.filter(
-        (worker) => workersPresent.includes(String(worker.id)) || workersPresent.includes(worker.id),
-      )
     } catch (e) {
       console.error("Error parsing workers_present:", e)
       workersPresent = []
@@ -668,7 +668,8 @@ export default function DailyLogsTab({
         variant: "secondary",
       })
 
-      setDailyLogs(dailyLogs.map((log) => (log.id === selectedLog.id ? updatedLog : log)))
+      // Update the local state with the updated log
+      setDailyLogs((prevLogs) => prevLogs.map((log) => (log.id === selectedLog.id ? updatedLog : log)))
       setShowEditDialog(false)
       setSelectedLog(null)
       resetForm()
@@ -732,10 +733,7 @@ export default function DailyLogsTab({
       // setDailyLogs(dailyLogs.filter((log) => log.id !== selectedLog.id)) // Remove this line
       // Reload first page after deleting
       setCurrentPage(1)
-      const logs = await getDailyLogs(logsPerPage, 0, { dateFilter, projectFilter }) // Pass filters
-      const count = await getDailyLogsCount({ dateFilter, projectFilter }) // Pass filters
-      setDailyLogs(logs)
-      setTotalLogs(count)
+      loadDailyLogs() // Reload logs to reflect deletion and pagination
       reloadMaterials() // Reload materials to reflect restored stock
 
       setShowDeleteDialog(false)
@@ -780,7 +778,6 @@ export default function DailyLogsTab({
     visibleQuantity: number,
     sourceLocation: string, // Add source location parameter
   ) => {
-    // </CHANGE>
     setFormData((prev) => {
       const existingIndex = prev.materials_used.findIndex((m) => m.material_id === materialId)
 
@@ -792,7 +789,7 @@ export default function DailyLogsTab({
           actual_quantity: actualQuantity,
           visible_quantity: visibleQuantity,
           source_location: sourceLocation, // Update source location
-        } // </CHANGE>
+        }
         return { ...prev, materials_used: updatedMaterials }
       } else {
         // Add new material
@@ -805,7 +802,7 @@ export default function DailyLogsTab({
               actual_quantity: actualQuantity,
               visible_quantity: visibleQuantity,
               source_location: sourceLocation, // Store source location
-            }, // </CHANGE>
+            },
           ],
         }
       }
@@ -827,16 +824,12 @@ export default function DailyLogsTab({
     if (locationId === "storage") return "Central Storage"
     return getProjectName(locationId)
   }
-  // </CHANGE>
 
   const getWorkerName = (workerId: string | number) => {
     // Convert to string for comparison and try both string and number matching
     const workerIdStr = String(workerId)
-    const workerIdNum = Number(workerId)
 
-    const worker = workers.find(
-      (w) => w.id === workerIdStr || w.id === String(workerIdNum) || String(w.id) === workerIdStr,
-    )
+    const worker = workers.find((w) => w.id === workerIdStr || w.id === String(workerId))
 
     return worker?.name || `Unknown Worker (ID: ${workerId})`
   }
@@ -878,19 +871,22 @@ export default function DailyLogsTab({
     dateFilter.toDate ||
     projectFilter !== "all" ||
     workerFilter !== "all"
-  // </CHANGE>
 
   const handleLocationToggle = (locationId: string, checked: boolean) => {
     setSelectedLocationsForMaterial((prev) => {
       if (checked) {
-        return [...prev, locationId]
+        // Add location if not already present
+        if (!prev.includes(locationId)) {
+          return [...prev, locationId]
+        }
+        return prev
       } else {
+        // Remove location
         const newLocations = prev.filter((id) => id !== locationId)
         return newLocations.length > 0 ? newLocations : ["storage"] // Always keep at least one
       }
     })
   }
-  // </CHANGE>
 
   const totalPages = Math.ceil(totalLogs / logsPerPage)
 
@@ -973,10 +969,7 @@ export default function DailyLogsTab({
 
       // setDailyLogs([...dailyLogs, newLog]) // This line was removed and replaced with pagination reload
       setCurrentPage(1)
-      const logs = await getDailyLogs(logsPerPage, 0, { dateFilter, projectFilter }) // Pass filters
-      const count = await getDailyLogsCount({ dateFilter, projectFilter }) // Pass filters
-      setDailyLogs(logs)
-      setTotalLogs(count)
+      loadDailyLogs() // Reload logs to reflect new entry and pagination
 
       setShowAddDialog(false)
       resetForm()
@@ -1046,11 +1039,6 @@ export default function DailyLogsTab({
                 <DialogDescription>Record daily work progress and material usage with dual tracking</DialogDescription>
               </DialogHeader>
               <div className="space-y-6">
-                {/* </CHANGE> */}
-                {/* Remove single location selector, materials now tracked with their source location */}
-                {/* </CHANGE> */}
-                {/* </CHANGE> */}
-
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="date">Date *</Label>
@@ -1407,9 +1395,7 @@ export default function DailyLogsTab({
                         )}
                       </div>
                     </div>
-                    {/* </CHANGE> */}
                   </div>
-                  {/* </CHANGE> */}
                 </div>
 
                 <div>
@@ -1569,7 +1555,6 @@ export default function DailyLogsTab({
                 </Select>
               </div>
             </div>
-            {/* </CHANGE> */}
 
             {/* Filter Summary and Clear Button */}
             <div className="flex items-center justify-between pt-4 border-t">
@@ -1588,7 +1573,6 @@ export default function DailyLogsTab({
                     )}
                     {/* Display worker filter in summary */}
                     {workerFilter !== "all" && <span className="ml-2">by worker: {getWorkerName(workerFilter)}</span>}
-                    {/* </CHANGE> */}
                   </>
                 ) : (
                   `Showing all ${totalLogs} logs`
@@ -1684,7 +1668,7 @@ export default function DailyLogsTab({
               : isAdmin
                 ? "Track daily work progress and material usage with dual tracking"
                 : "View daily work progress and material usage"}
-            {filteredLogs.length !== dailyLogs.length && (
+            {filteredLogs.length !== totalLogs && (
               <span className="ml-2 text-blue-600">
                 (Showing {filteredLogs.length} of {totalLogs} logs)
               </span>
@@ -1695,274 +1679,292 @@ export default function DailyLogsTab({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="flex items-center gap-1">
-                  Date
-                  <span className="text-xs text-gray-400">(Newest First)</span>
-                </TableHead>
-                <TableHead>Project</TableHead>
-                <TableHead>Work Description</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Hours</TableHead>
-                <TableHead>Workers</TableHead>
-                <TableHead>Weather</TableHead>
-                <TableHead>Materials Used</TableHead>
-                <TableHead>Created By</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredLogs
-                .sort((a, b) => {
-                  // Sort by date from newest to oldest
-                  const dateA = new Date(a.date).getTime()
-                  const dateB = new Date(b.date).getTime()
-                  return dateB - dateA
-                })
-                .map((log) => {
-                  const workersPresent = Array.isArray(log.workers_present)
-                    ? log.workers_present
-                    : JSON.parse(log.workers_present || "[]")
+          {isLoading ? (
+            <div className="flex justify-center items-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+            </div>
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="flex items-center gap-1">
+                      Date
+                      <span className="text-xs text-gray-400">(Newest First)</span>
+                    </TableHead>
+                    <TableHead>Project</TableHead>
+                    <TableHead>Work Description</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Hours</TableHead>
+                    <TableHead>Workers</TableHead>
+                    <TableHead>Weather</TableHead>
+                    <TableHead>Materials Used</TableHead>
+                    <TableHead>Created By</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredLogs
+                    .sort((a, b) => {
+                      // Sort by date from newest to oldest
+                      const dateA = new Date(a.date).getTime()
+                      const dateB = new Date(b.date).getTime()
+                      return dateB - dateA
+                    })
+                    .map((log) => {
+                      const workersPresent = Array.isArray(log.workers_present)
+                        ? log.workers_present
+                        : typeof log.workers_present === "string"
+                          ? JSON.parse(log.workers_present || "[]")
+                          : []
 
-                  // Parse materials_used and handle both old and new formats
-                  let materialsUsed = log.materials_used
-                  if (typeof materialsUsed === "string") {
-                    try {
-                      materialsUsed = JSON.parse(materialsUsed)
-                    } catch (e) {
-                      materialsUsed = []
-                    }
-                  }
+                      // Parse materials_used and handle both old and new formats
+                      let materialsUsed = log.materials_used
+                      if (typeof materialsUsed === "string") {
+                        try {
+                          materialsUsed = JSON.parse(materialsUsed)
+                        } catch (e) {
+                          materialsUsed = []
+                        }
+                      }
 
-                  const statusConfig = getStatusConfig(log.status || "completed")
+                      const statusConfig = getStatusConfig(log.status || "completed")
 
-                  return (
-                    <TableRow key={log.id}>
-                      <TableCell>
-                        <div className="flex items-center">
-                          <Calendar className="h-4 w-4 mr-2 text-gray-400" />
-                          {new Date(log.date).toLocaleDateString()}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{getProjectName(log.project_id)}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="max-w-xs truncate">{log.work_description || log.work_completed}</div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary" className="flex items-center gap-1 w-fit">
-                          <statusConfig.icon className="h-3 w-3" />
-                          {statusConfig.label}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center">
-                          <Clock className="h-4 w-4 mr-2 text-gray-400" />
-                          <span className="text-sm">{log.hours_worked || 0}h</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {(() => {
-                          const workersPresent = Array.isArray(log.workers_present)
-                            ? log.workers_present
-                            : JSON.parse(log.workers_present || "[]")
-                          return workersPresent.length > 0 ? (
+                      return (
+                        <TableRow key={log.id}>
+                          <TableCell>
+                            <div className="flex items-center">
+                              <Calendar className="h-4 w-4 mr-2 text-gray-400" />
+                              {new Date(log.date).toLocaleDateString()}
+                              {photoCountsMap.get(log.id) && photoCountsMap.get(log.id)! > 0 && (
+                                <Badge variant="secondary" className="ml-2 flex items-center gap-1">
+                                  <Camera className="h-3 w-3" />
+                                  {photoCountsMap.get(log.id)}
+                                </Badge>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{getProjectName(log.project_id)}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="max-w-xs truncate">{log.work_description || log.work_completed}</div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary" className="flex items-center gap-1 w-fit">
+                              <statusConfig.icon className="h-3 w-3" />
+                              {statusConfig.label}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center">
+                              <Clock className="h-4 w-4 mr-2 text-gray-400" />
+                              <span className="text-sm">{log.hours_worked || 0}h</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {(() => {
+                              const workersPresent = Array.isArray(log.workers_present)
+                                ? log.workers_present
+                                : typeof log.workers_present === "string"
+                                  ? JSON.parse(log.workers_present || "[]")
+                                  : []
+                              return workersPresent.length > 0 ? (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div className="flex items-center cursor-help">
+                                        <Users className="h-4 w-4 mr-2 text-gray-400" />
+                                        <span className="text-sm">{workersPresent.length} workers</span>
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-xs">
+                                      <div className="space-y-1">
+                                        <p className="font-semibold text-sm mb-2">Workers Present:</p>
+                                        {workersPresent.length > 0 ? (
+                                          workersPresent.map((workerId: string | number, idx: number) => {
+                                            const workerName = getWorkerName(workerId)
+                                            return (
+                                              <div key={idx} className="text-sm flex items-center gap-2">
+                                                <User className="h-3 w-3" />
+                                                {workerName}
+                                              </div>
+                                            )
+                                          })
+                                        ) : (
+                                          <p className="text-sm text-gray-500">No workers assigned</p>
+                                        )}
+                                      </div>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              ) : (
+                                <span className="text-gray-400 text-sm">-</span>
+                              )
+                            })()}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary">{log.weather_conditions || log.weather || "N/A"}</Badge>
+                          </TableCell>
+                          <TableCell>
                             <TooltipProvider>
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <div className="flex items-center cursor-help">
-                                    <Users className="h-4 w-4 mr-2 text-gray-400" />
-                                    <span className="text-sm">{workersPresent.length} workers</span>
+                                  <div className="flex items-center gap-1 cursor-help">
+                                    <Package className="h-4 w-4 mr-2 text-gray-400" />
+                                    <span className="text-sm">
+                                      {Array.isArray(materialsUsed) ? materialsUsed.length : 0} items
+                                    </span>
+                                    {isAdmin &&
+                                      Array.isArray(materialsUsed) &&
+                                      materialsUsed.some((m) => m.actual_quantity !== m.visible_quantity) && (
+                                        <div className="flex items-center gap-1 text-xs text-blue-600">
+                                          <Lock className="h-3 w-3" />
+                                          <span>Dual</span>
+                                        </div>
+                                      )}
                                   </div>
                                 </TooltipTrigger>
-                                <TooltipContent className="max-w-xs">
-                                  <div className="space-y-1">
-                                    <p className="font-semibold text-sm mb-2">Workers Present:</p>
-                                    {workersPresent.length > 0 ? (
-                                      workersPresent.map((workerId: string | number, idx: number) => {
-                                        const workerName = getWorkerName(workerId)
-                                        return (
-                                          <div key={idx} className="text-sm flex items-center gap-2">
-                                            <User className="h-3 w-3" />
-                                            {workerName}
+                                <TooltipContent className="max-w-md">
+                                  <div className="space-y-2">
+                                    <p className="font-semibold text-sm mb-2">Materials Used:</p>
+                                    {Array.isArray(materialsUsed) && materialsUsed.length > 0 ? (
+                                      materialsUsed.map((material: any, idx: number) => (
+                                        <div key={idx} className="text-sm border-b pb-2 last:border-0">
+                                          <div className="flex items-start justify-between gap-2">
+                                            <div className="flex-1">
+                                              <div className="font-medium">{getMaterialName(material.material_id)}</div>
+                                              <div className="text-gray-500 text-xs mt-1">
+                                                {isAdmin && material.actual_quantity !== material.visible_quantity ? (
+                                                  <div className="space-y-1">
+                                                    <div className="flex items-center gap-1">
+                                                      <Unlock className="h-3 w-3" />
+                                                      Visible: {material.visible_quantity}{" "}
+                                                      {getMaterialUnit(material.material_id)}
+                                                    </div>
+                                                    <div className="flex items-center gap-1 text-blue-600">
+                                                      <Lock className="h-3 w-3" />
+                                                      Actual: {material.actual_quantity}{" "}
+                                                      {getMaterialUnit(material.material_id)}
+                                                    </div>
+                                                  </div>
+                                                ) : (
+                                                  <span>
+                                                    Quantity: {material.visible_quantity || material.quantity}{" "}
+                                                    {getMaterialUnit(material.material_id)}
+                                                  </span>
+                                                )}
+                                              </div>
+                                              {material.source_location && (
+                                                <div className="flex items-center gap-1 text-xs text-gray-400 mt-1">
+                                                  <MapPin className="h-3 w-3" />
+                                                  <span>From: {getLocationName(material.source_location)}</span>
+                                                </div>
+                                              )}
+                                            </div>
                                           </div>
-                                        )
-                                      })
+                                        </div>
+                                      ))
                                     ) : (
-                                      <p className="text-sm text-gray-500">No workers assigned</p>
+                                      <p className="text-sm text-gray-500">No materials used</p>
                                     )}
                                   </div>
                                 </TooltipContent>
                               </Tooltip>
                             </TooltipProvider>
-                          ) : (
-                            <span className="text-gray-400 text-sm">-</span>
-                          )
-                        })()}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">{log.weather_conditions || log.weather || "N/A"}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div className="flex items-center gap-1 cursor-help">
-                                <Package className="h-4 w-4 mr-2 text-gray-400" />
-                                <span className="text-sm">
-                                  {Array.isArray(materialsUsed) ? materialsUsed.length : 0} items
-                                </span>
-                                {isAdmin &&
-                                  Array.isArray(materialsUsed) &&
-                                  materialsUsed.some((m) => m.actual_quantity !== m.visible_quantity) && (
-                                    <div className="flex items-center gap-1 text-xs text-blue-600">
-                                      <Lock className="h-3 w-3" />
-                                      <span>Dual</span>
-                                    </div>
-                                  )}
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent className="max-w-md">
-                              <div className="space-y-2">
-                                <p className="font-semibold text-sm mb-2">Materials Used:</p>
-                                {Array.isArray(materialsUsed) && materialsUsed.length > 0 ? (
-                                  materialsUsed.map((material: any, idx: number) => (
-                                    <div key={idx} className="text-sm border-b pb-2 last:border-0">
-                                      <div className="flex items-start justify-between gap-2">
-                                        <div className="flex-1">
-                                          <div className="font-medium">{getMaterialName(material.material_id)}</div>
-                                          <div className="text-gray-500 text-xs mt-1">
-                                            {isAdmin && material.actual_quantity !== material.visible_quantity ? (
-                                              <div className="space-y-1">
-                                                <div className="flex items-center gap-1">
-                                                  <Unlock className="h-3 w-3" />
-                                                  Visible: {material.visible_quantity}{" "}
-                                                  {getMaterialUnit(material.material_id)}
-                                                </div>
-                                                <div className="flex items-center gap-1 text-blue-600">
-                                                  <Lock className="h-3 w-3" />
-                                                  Actual: {material.actual_quantity}{" "}
-                                                  {getMaterialUnit(material.material_id)}
-                                                </div>
-                                              </div>
-                                            ) : (
-                                              <span>
-                                                Quantity: {material.visible_quantity || material.quantity}{" "}
-                                                {getMaterialUnit(material.material_id)}
-                                              </span>
-                                            )}
-                                          </div>
-                                          {material.source_location && (
-                                            <div className="flex items-center gap-1 text-xs text-gray-400 mt-1">
-                                              <MapPin className="h-3 w-3" />
-                                              <span>From: {getLocationName(material.source_location)}</span>
-                                            </div>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  ))
-                                ) : (
-                                  <p className="text-sm text-gray-500">No materials used</p>
-                                )}
-                              </div>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <User className="h-4 w-4 text-gray-400" />
-                          <span className="text-sm">{log.created_by_user_name || "Unknown User"}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex space-x-2">
-                          <Button variant="outline" size="sm" onClick={() => handleView(log)}>
-                            <Eye className="h-3 w-3" />
-                          </Button>
-                          {canEditDailyLogs && (
-                            <Button variant="outline" size="sm" onClick={() => handleEdit(log)}>
-                              <Edit className="h-3 w-3" />
-                            </Button>
-                          )}
-                          {canDeleteDailyLogs && (
-                            <Button variant="outline" size="sm" onClick={() => handleDelete(log)}>
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-            </TableBody>
-          </Table>
-          {filteredLogs.length === 0 && (
-            <div className="text-center py-8">
-              <p className="text-gray-500">
-                {hasActiveFilters
-                  ? "No logs found matching the selected filters. Try adjusting your filter criteria."
-                  : canAddDailyLogs
-                    ? "No daily logs found. Add your first log to get started!"
-                    : "No daily logs available to view."}
-              </p>
-            </div>
-          )}
-          <div className="flex items-center justify-between mt-4">
-            <div className="text-sm text-gray-500">
-              Showing {Math.min((currentPage - 1) * logsPerPage + 1, totalLogs)} to{" "}
-              {Math.min(currentPage * logsPerPage, totalLogs)} of {totalLogs} logs
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-              >
-                <ChevronLeft className="h-4 w-4 mr-1" />
-                Previous
-              </Button>
-              <div className="flex items-center gap-2">
-                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                  let pageNum
-                  if (totalPages <= 5) {
-                    pageNum = i + 1
-                  } else if (currentPage <= 3) {
-                    pageNum = i + 1
-                  } else if (currentPage >= totalPages - 2) {
-                    pageNum = totalPages - 4 + i
-                  } else {
-                    pageNum = currentPage - 2 + i
-                  }
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1">
+                              <User className="h-4 w-4 text-gray-400" />
+                              <span className="text-sm">{log.created_by_user_name || "Unknown User"}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex space-x-2">
+                              <Button variant="outline" size="sm" onClick={() => handleView(log)}>
+                                <Eye className="h-3 w-3" />
+                              </Button>
+                              {canEditDailyLogs && (
+                                <Button variant="outline" size="sm" onClick={() => handleEdit(log)}>
+                                  <Edit className="h-3 w-3" />
+                                </Button>
+                              )}
+                              {canDeleteDailyLogs && (
+                                <Button variant="outline" size="sm" onClick={() => handleDelete(log)}>
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                </TableBody>
+              </Table>
+              {filteredLogs.length === 0 && (
+                <div className="text-center py-8">
+                  <p className="text-gray-500">
+                    {hasActiveFilters
+                      ? "No logs found matching the selected filters. Try adjusting your filter criteria."
+                      : canAddDailyLogs
+                        ? "No daily logs found. Add your first log to get started!"
+                        : "No daily logs available to view."}
+                  </p>
+                </div>
+              )}
+              <div className="flex items-center justify-between mt-4">
+                <div className="text-sm text-gray-500">
+                  Showing {Math.min((currentPage - 1) * logsPerPage + 1, totalLogs)} to{" "}
+                  {Math.min(currentPage * logsPerPage, totalLogs)} of {totalLogs} logs
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                  >
+                    <ChevronLeft className="h-4 w-4 mr-1" />
+                    Previous
+                  </Button>
+                  <div className="flex items-center gap-2">
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      let pageNum
+                      if (totalPages <= 5) {
+                        pageNum = i + 1
+                      } else if (currentPage <= 3) {
+                        pageNum = i + 1
+                      } else if (currentPage >= totalPages - 2) {
+                        pageNum = totalPages - 4 + i
+                      } else {
+                        pageNum = currentPage - 2 + i
+                      }
 
-                  return (
-                    <Button
-                      key={pageNum}
-                      variant={currentPage === pageNum ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setCurrentPage(pageNum)}
-                    >
-                      {pageNum}
-                    </Button>
-                  )
-                })}
+                      return (
+                        <Button
+                          key={pageNum}
+                          variant={currentPage === pageNum ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setCurrentPage(pageNum)}
+                        >
+                          {pageNum}
+                        </Button>
+                      )
+                    })}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                  >
+                    Next
+                    <ChevronRight className="h-4 w-4 ml-1" />
+                  </Button>
+                </div>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-              >
-                Next
-                <ChevronRight className="h-4 w-4 ml-1" />
-              </Button>
-            </div>
-          </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -2056,7 +2058,9 @@ export default function DailyLogsTab({
                   {(() => {
                     const workersPresent = Array.isArray(selectedLog.workers_present)
                       ? selectedLog.workers_present
-                      : JSON.parse(selectedLog.workers_present || "[]")
+                      : typeof selectedLog.workers_present === "string"
+                        ? JSON.parse(selectedLog.workers_present || "[]")
+                        : []
                     return workersPresent.length > 0 ? (
                       workersPresent.map((workerId: string | number, index: number) => (
                         <Badge key={index} variant="outline">
@@ -2148,7 +2152,6 @@ export default function DailyLogsTab({
                   isAdmin={userProfile?.role === "admin"}
                   canUpload={canEditDailyLogs}
                   canDelete={isAdmin}
-                  // </CHANGE>
                   addPhotoFn={async (photo) => {
                     if (!selectedLog?.id) return null
                     return await addDailyLogPhoto(selectedLog.id.toString(), photo)
@@ -2449,7 +2452,6 @@ export default function DailyLogsTab({
                     </div>
                   </div>
                 </div>
-                {/* </CHANGE> */}
 
                 <div className="space-y-3">
                   {formData.materials_used.map((materialUsed, index) => (
@@ -2546,7 +2548,6 @@ export default function DailyLogsTab({
                       </div>
                     </div>
                   ))}
-                  {/* </CHANGE> */}
                 </div>
               </div>
 
