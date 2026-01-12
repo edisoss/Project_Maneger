@@ -30,6 +30,7 @@ export interface MaterialTransaction {
   reference_type?: string
   reference_id?: string
   project?: string
+  project_id?: number
   notes?: string
   created_by?: string
   created_at: string
@@ -596,11 +597,13 @@ export async function getMaterialTransactions(materialId?: string): Promise<Mate
     const { data, error } = await query
 
     if (error) {
+      console.error("[v0] Error fetching material transactions:", error)
       return []
     }
 
     return data || []
   } catch (error) {
+    console.error("[v0] Exception fetching material transactions:", error)
     return []
   }
 }

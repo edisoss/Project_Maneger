@@ -1317,6 +1317,18 @@ export default function MaterialsTab({
                                 </div>
                               )}
 
+                              {transaction.reference_type === "daily_log" && (transaction as any).daily_logs && (
+                                <div className="flex items-center gap-2">
+                                  <Calendar className="h-3 w-3 text-gray-400" />
+                                  <span className="text-gray-600">Daily Log:</span>
+                                  <span className="font-medium">
+                                    {new Date((transaction as any).daily_logs.date).toLocaleDateString()}
+                                    {(transaction as any).daily_logs.title &&
+                                      ` - ${(transaction as any).daily_logs.title}`}
+                                  </span>
+                                </div>
+                              )}
+
                               {transaction.created_by && (
                                 <div className="flex items-center gap-2">
                                   <User className="h-3 w-3 text-gray-400" />

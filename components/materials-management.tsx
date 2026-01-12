@@ -38,6 +38,7 @@ import {
   Minus,
   Settings,
   FileText,
+  Building,
 } from "lucide-react"
 import {
   getMaterialsByProject,
@@ -1149,20 +1150,27 @@ export default function MaterialsManagement({ isAdmin = false, navigateToDailyLo
                             </TableCell>
                             <TableCell>{tx.new_stock}</TableCell>
                             <TableCell>
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm text-muted-foreground">{tx.notes}</span>
+                              <div className="space-y-1">
+                                {tx.project && (
+                                  <div className="flex items-center gap-1">
+                                    <Building className="h-3 w-3 text-muted-foreground" />
+                                    <span className="text-sm font-medium">{tx.project}</span>
+                                  </div>
+                                )}
+                                {tx.notes && <span className="text-sm text-muted-foreground block">{tx.notes}</span>}
                                 {tx.reference_type === "daily_log" && tx.reference_id && navigateToDailyLog && (
                                   <Button
                                     variant="ghost"
-                                    size="icon"
-                                    className="h-6 w-6"
+                                    size="sm"
+                                    className="h-6 text-xs px-2"
                                     onClick={() => {
                                       setHistoryDialogOpen(false)
                                       navigateToDailyLog(tx.reference_id!)
                                     }}
                                     title="View Daily Log"
                                   >
-                                    <FileText className="h-4 w-4 text-blue-600" />
+                                    <FileText className="h-3 w-3 mr-1 text-blue-600" />
+                                    View Log
                                   </Button>
                                 )}
                               </div>
