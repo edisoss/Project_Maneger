@@ -46,6 +46,7 @@ import {
   Upload,
   Download,
   X,
+  FileCheck,
 } from "lucide-react"
 import { addProject, updateProject, deleteProject, getDocuments, addDocument, deleteDocument } from "@/lib/database"
 import type { Project, Document } from "@/lib/database"
@@ -54,6 +55,7 @@ import dynamic from "next/dynamic"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import PhotoGallery from "@/components/photo-gallery"
 import { getProjectPhotos, addProjectPhoto, deleteProjectPhoto } from "@/lib/database"
+import QualityControlDocument from "@/components/quality-control-document"
 
 // Dynamically import the map component to avoid SSR issues with Leaflet
 const ProjectMap = dynamic(() => import("./project-map"), {
@@ -80,6 +82,7 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
   const [uploading, setUploading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [showQualityControlDoc, setShowQualityControlDoc] = useState(false)
   const { toast } = useToast()
 
   const [formData, setFormData] = useState({
@@ -701,18 +704,24 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
 
       {/* View Dialog */}
       <Dialog open={showViewDialog} onOpenChange={setShowViewDialog}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Project Details</DialogTitle>
-            <DialogDescription>View project information and documents</DialogDescription>
+            <DialogTitle className="flex items-center gap-2">
+              <Building2 className="h-5 w-5" />
+              {selectedProject?.name}
+            </DialogTitle>
+            <DialogDescription>{selectedProject?.description}</DialogDescription>
           </DialogHeader>
+
           {selectedProject && (
-            <Tabs defaultValue="details">
-              <TabsList className="grid w-full grid-cols-3">
+            <Tabs defaultValue="details" className="w-full">
+              <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="details">Details</TabsTrigger>
                 <TabsTrigger value="documents">Documents</TabsTrigger>
                 <TabsTrigger value="photos">Photos</TabsTrigger>
+                <TabsTrigger value="templates">Templates</TabsTrigger>
               </TabsList>
+
               <TabsContent value="details" className="space-y-4 mt-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -770,6 +779,7 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
                   </div>
                 </div>
               </TabsContent>
+
               <TabsContent value="documents" className="space-y-4 mt-4">
                 <div className="flex justify-between items-center">
                   <h3 className="text-lg font-medium">Project Documents</h3>
@@ -861,6 +871,7 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
                   </Table>
                 </div>
               </TabsContent>
+
               <TabsContent value="photos" className="space-y-4 mt-4">
                 <PhotoGallery
                   photos={projectPhotos}
@@ -872,15 +883,73 @@ export default function ProjectsTab({ projects = [], setProjects = () => {}, log
                   deletePhotoFn={deleteProjectPhoto}
                   projectName={selectedProject.name}
                 />
-                {/* </CHANGE> */}
+              </TabsContent>
+
+              <TabsContent value="templates" className="space-y-4">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-semibold">Document Templates</h3>
+                      <p className="text-sm text-muted-foreground">Create documents from templates</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Card
+                      className="cursor-pointer hover:border-primary transition-colors"
+                      onClick={() => setShowQualityControlDoc(true)}
+                    >
+                      <CardContent className="p-6">
+                        <div className="flex items-start gap-4">
+                          <div className="p-3 bg-primary/10 rounded-lg">
+                            <FileCheck className="h-6 w-6 text-primary" />
+                          </div>
+                          <div className="flex-1">
+                            <h4 className="font-semibold">Kvalitātes kontroles akts (KKA)</h4>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              Quality Control Act for EL cable tray construction
+                            </p>
+                            <div className="flex items-center gap-2 mt-3 text-xs text-muted-foreground">
+                              <Badge variant="secondary">ME Nr. EL-04</Badge>
+                              <Badge variant="outline">Rev. 01</Badge>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="opacity-50">
+                      <CardContent className="p-6">
+                        <div className="flex items-start gap-4">
+                          <div className="p-3 bg-muted rounded-lg">
+                            <FileText className="h-6 w-6 text-muted-foreground" />
+                          </div>
+                          <div className="flex-1">
+                            <h4 className="font-semibold text-muted-foreground">More templates coming soon</h4>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              Additional document templates will be added here
+                            </p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </div>
               </TabsContent>
             </Tabs>
           )}
-          <div className="flex justify-end">
-            <Button onClick={() => setShowViewDialog(false)}>Close</Button>
-          </div>
         </DialogContent>
       </Dialog>
+
+      {showQualityControlDoc && selectedProject && (
+        <Dialog open={showQualityControlDoc} onOpenChange={setShowQualityControlDoc}>
+          <QualityControlDocument
+            projectId={selectedProject.id.toString()}
+            projectName={selectedProject.name}
+            onClose={() => setShowQualityControlDoc(false)}
+          />
+        </Dialog>
+      )}
 
       {/* Edit Dialog */}
       {isAdmin && (
