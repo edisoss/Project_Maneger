@@ -826,10 +826,15 @@ export default function DailyLogsTab({
   }
 
   const getWorkerName = (workerId: string | number) => {
-    // Convert to string for comparison and try both string and number matching
+    // Convert to both string and number for comparison
     const workerIdStr = String(workerId)
+    const workerIdNum = Number(workerId)
 
-    const worker = workers.find((w) => w.id === workerIdStr || w.id === String(workerId))
+    const worker = workers.find((w) => {
+      const wId = w.id
+      // Try matching as both string and number since database stores integers but types are strings
+      return wId === workerIdStr || wId === workerId || String(wId) === workerIdStr || Number(wId) === workerIdNum
+    })
 
     return worker?.name || `Unknown Worker (ID: ${workerId})`
   }
